@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.22 · 8237e18</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.23 · 39a8887</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -493,10 +493,10 @@ function scopeEditor(scope,onVendorChange,parentScope){
     const showing=panel.style.display!=='none';
     if(openScopeDrop)openScopeDrop.style.display='none';
     panel.style.display=showing?'none':'block';openScopeDrop=showing?null:panel;}});
-  const panel=h('div',{class:'pop',onclick:e=>e.stopPropagation(),style:'display:none;min-width:340px;max-width:420px;max-height:380px'});
+  const panel=h('div',{class:'pop',onclick:e=>e.stopPropagation(),style:'display:none;left:0;width:426px;max-width:95vw;max-height:380px'});
   const commit=()=>{derive();btn.textContent=btnLabel();renderTree();onVendorChange&&onVendorChange(Object.keys(scope.vendors));};
   const path={v:null,s:null};
-  const col='max-height:280px;overflow-y:auto;border-right:1px solid #e7e5e4;padding:2px 4px;flex:none';
+  const col='box-sizing:border-box;max-height:280px;overflow-y:auto;border-right:1px solid #e7e5e4;padding:2px;flex:none';
   const headRow=(title,ids,invOnly)=>h('div',{style:'font-size:11px;color:#78716c;border-bottom:1px solid #f5f5f4;margin-bottom:2px;display:flex;gap:3px;align-items:center'},
     h('span',{style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'},title),
     invOnly?'':h('button',{style:'font-size:10px;padding:0 3px',onclick:()=>{ids.forEach(i=>sel.add(i));commit();}},'全'),
@@ -519,23 +519,23 @@ function scopeEditor(scope,onVendorChange,parentScope){
       box.append(n?c:h('div',{class:'dim',style:'padding:8px'},'无匹配'));return;
     }
     const wrap=h('div',{style:'display:flex'});
-    const c1=h('div',{style:col+';width:112px'});
+    const c1=h('div',{style:col+';width:126px'});
     c1.append(headRow('厂商',allIds));
     for(const [vid,sm] of tree){
       const vIds=[...sm.values()].flat().map(e=>e.model.id);
-      c1.append(itemRow(tri(vIds),vid,path.v===vid,()=>{path.v=vid;path.s=null;renderTree();}));
+      c1.append(itemRow(tri(vIds),vid,path.v===vid,()=>{path.v=vid;path.s=null;renderTree();},true));
     }
     wrap.append(c1);
     if(path.v&&tree.has(path.v)){
       const sm=tree.get(path.v),vIds=[...sm.values()].flat().map(e=>e.model.id);
-      const c2=h('div',{style:col+';width:112px'});
+      const c2=h('div',{style:col+';width:126px'});
       c2.append(headRow(path.v,vIds));
       for(const [s,ms] of sm)
-        c2.append(itemRow(tri(ms.map(e=>e.model.id)),s,path.s===s,()=>{path.s=s;renderTree();}));
+        c2.append(itemRow(tri(ms.map(e=>e.model.id)),s,path.s===s,()=>{path.s=s;renderTree();},true));
       wrap.append(c2);
       if(path.s&&sm.has(path.s)){
         const ms=sm.get(path.s),sIds=ms.map(e=>e.model.id);
-        const c3=h('div',{style:col+';width:196px;border-right:none'});
+        const c3=h('div',{style:col+';width:158px;border-right:none'});
         c3.append(headRow(`${path.s}(${ms.length})`,sIds,true));
         for(const e of ms)c3.append(leafRow(e.model.id));
         wrap.append(c3);
@@ -551,7 +551,7 @@ function scopeEditor(scope,onVendorChange,parentScope){
       h('button',{onclick:()=>{allIds.forEach(i=>sel.has(i)?sel.delete(i):sel.add(i));commit();}},'反选'),
       qIn,stat),box);
   onVendorChange&&onVendorChange(Object.keys(scope.vendors||{}));
-  return {el:h('span',{class:'scdrop',style:'position:relative;display:inline-block'},btn,panel),refresh:renderTree};
+  return {el:h('div',{class:'scdrop',style:'position:relative'},btn,panel),refresh:renderTree};
 }
 let openScopeDrop=null;
 
