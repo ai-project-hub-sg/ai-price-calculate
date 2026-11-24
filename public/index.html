@@ -579,9 +579,11 @@ function bindGlobal(){
   $('#updBtn').onclick=async()=>{
     if(!state.backend)return alert('需要后端：python -m server.app');
     const btn=$('#updBtn'),box=$('#updStatus');
-    btn.disabled=true;box.innerHTML='';
+    const oldTxt=btn.textContent;
+    btn.disabled=true;btn.textContent='⟳ 更新中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
-    log('已提交更新任务…');
+    log('已提交更新任务，等待后端返回…');
+    const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
     try{
       const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       if(!r.ok)throw new Error('HTTP '+r.status);
@@ -593,7 +595,7 @@ function bindGlobal(){
           if(j.status==='running'){const last=(j.log||[]).slice(-1)[0];
             box.lastChild&&box.lastChild.textContent.startsWith('运行中')?box.lastChild.remove():0;
             log(`运行中… ${((Date.now()-t0)/1000).toFixed(0)}s`+(last?` · ${last}`:''));return;}
-          clearInterval(poll);btn.disabled=false;
+          clearInterval(poll);done();
           if(j.status==='done'){
             const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
             log('✓ 更新完成');
@@ -603,7 +605,7 @@ function bindGlobal(){
           }else log('✗ 失败: '+(j.error||'未知'),'danger');
         }catch(e){/* 轮询失败下一轮再试 */}
       },1500);
-    }catch(e){btn.disabled=false;log('✗ 请求失败: '+e.message);}
+    }catch(e){done();log('✗ 请求失败: '+e.message);}
   };
 }
 boot();

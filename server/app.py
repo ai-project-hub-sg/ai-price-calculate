@@ -88,6 +88,11 @@ _MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
 
 
 class Handler(BaseHTTPRequestHandler):
+    def end_headers(self):
+        # 开发期禁用缓存，避免浏览器拿到旧版页面/数据
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def _send(self, code: int, body: bytes, ctype="application/json; charset=utf-8"):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
