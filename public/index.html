@@ -190,10 +190,6 @@ async function boot(){
     if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
   } catch(e){}
   if(!state.dataset) state.dataset=FALLBACK_DATA;
-  // 全局模型 datalist：id 可直接输也可下拉选
-  const dl=h('datalist',{id:'allModels'});
-  for(const e of C.allModels(state.dataset))dl.append(h('option',{value:e.model.id,label:`${e.vendor.id} · ${e.model.name||''}`}));
-  document.body.append(dl);
   if(!state.config) state.config=window.DEMO_CONFIG?JSON.parse(JSON.stringify(window.DEMO_CONFIG)):C.defaultConfig();
   if(!state.backend) showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
   await loadFx();
@@ -595,13 +591,15 @@ function editMixPresets(){
   };
   const renderM=()=>{mList.innerHTML='';
     mm.forEach((v,i)=>{
-      const idIn=inp(v.modelId||'');idIn.placeholder='模型id';idIn.setAttribute('list','allModels');idIn.style.width='200px';idIn.onchange=()=>{v.modelId=idIn.value.trim();};
+      const pickBtn=h('button',{style:'min-width:150px;text-align:left',
+        onclick:()=>pickModels('选择模型',ids=>{if(ids.length){v.modelId=ids[0];renderM();}})},v.modelId||'选择模型…');
       const mi=mixInputs(v.mix);
-      mList.append(h('div',{class:'row'},idIn,'输入',mi.els[0],'缓读',mi.els[1],'缓写',mi.els[2],'输出',mi.els[3],
+      mList.append(h('div',{class:'row'},pickBtn,'输入',mi.els[0],'缓读',mi.els[1],'缓写',mi.els[2],'输出',mi.els[3],
         h('button',{onclick:()=>{mm.splice(i,1);renderM();}},'🗑')));
       mi.els.forEach(e=>e.onchange=()=>{v.mix=mi.get();});
     });
-    mList.append(h('button',{onclick:()=>{mm.push({modelId:'',mix:{input:0,cacheRead:0,cacheWrite:0,output:0}});renderM();}},'＋添加模型预设'));
+    mList.append(h('button',{onclick:()=>pickModels('添加模型预设',ids=>{
+      ids.forEach(id=>{if(!mm.some(v=>v.modelId===id))mm.push({modelId:id,mix:{input:0,cacheRead:0,cacheWrite:0,output:0}});});renderM();})},'＋添加模型预设'));
   };
   renderV();renderM();
   drawer('配比预设',[h('div',{class:'hint'},'生效顺序：提供商 > 中转站 > 具体模型 > 厂商 > 公共默认（场景条上的配比即公共默认）'),
