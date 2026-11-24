@@ -280,6 +280,8 @@ function summaryRows(profiles, dataset, rate) {
             priceNative: native, currency: cur,
             priceCny: convert(native, cur, rate),
             officialCny: off,
+            mixLabel: [rowMix.input, rowMix.cacheRead, rowMix.cacheWrite, rowMix.output]
+              .map(x => +x || 0).join("|"),
           });
         }
       }

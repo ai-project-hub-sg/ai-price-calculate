@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.23 · 39a8887</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.24 · 3ce0231</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -274,7 +274,7 @@ function renderResult(){
   search.oninput=()=>{f.q=search.value;renderResult();};bar.append(search);
   const shown=rows.filter(r=>pass(r));
   $('#rowCount').textContent=`共 ${shown.length} 行（全部档案合计 ${rows.length}）`;
-  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny','官方(¥)']];
+  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['mixLabel','配比(入|读|写|出)'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny','官方(¥)']];
   const t=$('#resultTable');t.innerHTML='';
   if(!shown.length){t.append(h('tr',{},h('td',{class:'dim',colspan:cols.length},'无结果——建个站点或放宽筛选')));return;}
   const tr=h('tr',{});
