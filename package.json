@@ -1,0 +1,15 @@
+{
+  "name": "ai-price-calculate",
+  "version": "0.1.0",
+  "description": "AI 中转站价格归一化计算器：官方价×折扣×分档×配比 → 每1M tokens 可比单价（双币展示）",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test tests/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
