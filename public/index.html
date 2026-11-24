@@ -179,6 +179,8 @@ const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
   {id:'deepseek-v4-pro',name:'DeepSeek V4 Pro',status:'active',offPeakRatio:0.5,tiers:[{upToTokens:null,input:1.32,output:3.96,cacheRead:0.044}]}]}]};
 
 async function boot(){
+  window.addEventListener('error',e=>showBanner('JS 错误: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno));
+  window.addEventListener('unhandledrejection',e=>showBanner('异步错误: '+(e.reason&&e.reason.message||e.reason)));
   try { const d=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(d) state.dataset=d; } catch(e){}
   try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles&&c.profiles.length) state.config=c; } catch(e){}
   try {
@@ -577,8 +579,9 @@ function bindGlobal(){
   $('#stNew').onclick=()=>{const n=prompt('站点名');if(!n)return;profile().stations.push(C.newStation(n));render();};
   $('#offSearch').oninput=renderOfficial;
   $('#updBtn').onclick=async()=>{
-    if(!state.backend)return alert('需要后端：python -m server.app');
     const btn=$('#updBtn'),box=$('#updStatus');
+    if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
+      '⚠ 后端不可达（/api/models 请求失败）。请确认 python -m server.app 在运行，且通过 http://127.0.0.1:8787 访问页面'));return;}
     const oldTxt=btn.textContent;
     btn.disabled=true;btn.textContent='⟳ 更新中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
