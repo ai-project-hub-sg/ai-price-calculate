@@ -134,7 +134,10 @@
     </div>
     <textarea id="csvText" rows="4" style="width:100%;font:12px monospace" placeholder="粘贴 CSV 或选择文件"></textarea>
     <div class="toolbar" style="margin-top:6px"><button class="primary" id="csvRun">核对</button>
-      <label class="hint">一致判据 |差|≤<input type="number" id="tolPct" value="0.5" step="0.1" style="width:56px">% 或 ≤<input type="number" id="tolAbs" value="0.0005" step="0.0005" style="width:76px">（取大者）</label>
+      <label class="hint">一致判据
+        <input type="checkbox" id="tolPctOn" checked> |差|≤<input type="number" id="tolPct" value="0.5" step="0.1" style="width:56px">%
+        <input type="checkbox" id="tolAbsOn"> ≤<input type="number" id="tolAbs" value="0.0005" step="0.0005" style="width:76px">绝对值
+        （都勾=取大者，都不勾=严格相等）</label>
       <span class="hint" id="csvInfo"></span></div>
     <div style="overflow-x:auto"><table id="reconTable"></table></div>
   </section>
@@ -521,7 +524,9 @@ function renderRecon(){
       let verdict,cls='';
       if(r.status!=='ok'){verdict=r.status;cls='';bad++;}
       else{
-        const tol=Math.max((+$('#tolAbs').value||0),Math.abs(r.actual)*(+$('#tolPct').value||0)/100);
+        const pc=$('#tolPctOn').checked,ac=$('#tolAbsOn').checked;
+        const pv=Math.abs(r.actual)*(+$('#tolPct').value||0)/100,av=+$('#tolAbs').value||0;
+        const tol=pc&&ac?Math.max(pv,av):pc?pv:ac?av:0;
         const d=Math.abs(r.diff);
         if(r.flags.length){verdict='⚠ '+r.flags.join('；');cls='warn';warn++;}
         verdict=(verdict?verdict+' ':'')+(d<=tol?'✓ 一致':`差 ${(r.diff>0?'+':'')}${r.diff.toPrecision(3)}`);
