@@ -11,19 +11,24 @@
 └───────┬──────────────────────────────────┘
         │ fetch（失败降级 localStorage）
 ┌───────▼──────────────────────────────────┐
-│ server/index.js   Node 零依赖 http 服务    │
+│ server/app.py    Python 零依赖 http 服务   │
 │  ├─ 静态文件 public/                      │
 │  ├─ GET/PUT /api/config  → data/config.json│
 │  ├─ GET /api/models      → data/models.json│
-│  └─ GET /api/exchange-rate → 上游代理+缓存 │
+│  ├─ GET /api/fx          → 汇率代理+缓存   │
+│  ├─ GET /api/nodes       → v2rayN 节点清单 │
+│  └─ POST /api/pricing/update → 官方价目更新│
+│       （nodepool.py 读 v2rayN 节点起独立    │
+│         xray/sing-box 端口逐个探测可用出口） │
 └──────────────────────────────────────────┘
 ```
 
 设计取舍：
 
-- **零依赖**：无框架、无构建、无第三方包；`node server/index.js` 即启动。代价是手写约百行路由/静态服务，换取零供应链与极简部署。
+- **零依赖**：前后端均无第三方包；后端用 Python 3 标准库（`http.server`+`urllib`，原生支持代理），`python -m server.app` 即启动。换取零供应链与极简部署。
 - **calc.js 独立**：归一化/档位/折扣/折算全部纯函数放在前端模块中，同时被 `index.html`（浏览器 `<script src>`）与 `tests/`（`node:test` import）使用 —— 计算逻辑单一真相且可无 DOM 测试。
-- **后端是可选增强**：前端所有计算在本地完成；后端仅负责配置持久化与汇率代理。后端不可达 → localStorage 降级 + 手动汇率兜底，功能完整。
+- **后端是可选增强**：前端所有计算在本地完成；后端负责配置持久化、汇率代理与官方价目抓取。后端不可达 → localStorage 降级 + 手动汇率兜底，功能完整。
+- **官方价目抓取**（`server/fetcher.py`）：只对接厂商官方 `.md` 文档页，逐厂商适配器解析价目表；直连失败时经 `server/nodepool.py` 遍历 v2rayN 节点库（VLESS+Reality→HY2，独立拉起 xray/sing-box 本地端口，不改用户 v2rayN 配置）寻找可用出口。抓不到的厂商输出人工核对清单，不编造价格。合并只动 `models.json` 厂商价目，永不触碰 `config.json` 用户配置。
 
 ## 2. 目录结构
 
@@ -33,7 +38,9 @@ ai-price-calculate/
 │  ├─ index.html      # 单文件 SPA（结构+样式+视图逻辑，内联）
 │  └─ calc.js         # 纯函数：tier 命中、折扣合并、归一化、换汇、校验
 ├─ server/
-│  └─ index.js        # http 服务：静态 + REST API + 汇率代理（零依赖）
+│  ├─ app.py          # http 服务：静态 + REST API + 汇率代理（零依赖）
+│  ├─ nodepool.py     # v2rayN 节点库读取→xray/sing-box 独立端口→目标探测
+│  └─ fetcher.py      # 官方价目抓取/解析/合并（CLI：python -m server.fetcher）
 ├─ data/
 │  ├─ models.json     # 官方价目（入库、版本化、checkedAt）
 │  ├─ config.json     # 运行时用户配置（.gitignore，原子写入）
@@ -89,6 +96,9 @@ ai-price-calculate/
     "promptTokens": 128000,
     "mix": { "input": 0.7, "cacheRead": 0.2, "output": 0.1 },  // 存原始输入，计算时归一化
     "offPeak": false,                  // 全局开关：对带 offPeakRatio 的模型生效
+    "tieredPricing": {                 // 分档计价总开关（账户级）；false 时所有层级分档均不生效
+      "enabled": true                  //   （但不改写子级开关状态，重开即恢复）
+    },
     "presets": [{ "id": "p1", "name": "编码 3:1", "promptTokens": 128000, "mix": {...} }],
     "activePreset": null
   },
@@ -96,9 +106,14 @@ ai-price-calculate/
     "id": "st-…", "name": "示例站 A", "url": "",
     "currency": "USD",                  // 该站计费币种；决定自定义基础价与“不换汇”显示币种
     "enabled": true, "defaultDiscount": 0.8, "notes": "",
+    "tieredPricing": { "enabled": true },     // 站级分档开关；false→该站全部模型按基础档计
+    "providerSwitches": [{                    // 厂商级分档开关（作用域=该站内该厂商）
+      "providerId": "google", "tieredPricing": { "enabled": true }
+    }],
     "overrides": [{
       "modelId": "gpt-6.2-astra",
       "discount": 0.6,                  // 可选；缺省→站默认
+      "tieredPricing": { "enabled": true },   // 模型级分档开关（作用域=该站该模型）
       "basePrice": {                    // 可选；完全自定义（含自定义分档），币种=station.currency
         "tiers": [{ "upToTokens": 272000, "input": 5, "output": 25, "cacheRead": 0.25 },
                   { "upToTokens": null, "input": 10, "output": 37.5, "cacheRead": 0.5 }]
@@ -114,6 +129,8 @@ ai-price-calculate/
 
 优先级（高→低）：`station.overrides[].basePrice` > `modelOverrides[].basePrice` > 官方 `models.json`；折扣同理（模型覆盖折扣 > 站默认 > 1）。
 
+分档计价开关层级（账户 → 中转站 → 厂商 → 模型）：任一上级 `enabled=false` 时，该作用域及以下所有分档失效（一律按 `tiers[0]` 基础档计），但**不改写子级开关本身的状态**——上级重新开启后子级配置原样恢复。`resolveUnitPrices` 先求 `tiered = account && station && provider && model`，再决定是否按 `promptTokens` 选档。
+
 ### 3.3 计算契约（calc.js 导出）
 
 ```js
@@ -126,23 +143,27 @@ estimateRequest(unitPrices, usage, discount) -> number // F8 单次请求
 validateConfig(json) -> {ok, errors[]}                 // F10 导入校验
 ```
 
-## 4. API 契约（server/index.js）
+## 4. API 契约（server/app.py，已实现）
 
 | 方法/路径 | 行为 | 说明 |
 |---|---|---|
 | `GET /` `GET /<file>` | 服务 `public/` 静态文件 | index.html 默认；防目录穿越 |
-| `GET /api/models` | 返回 models.json | 加 `checkedAt` 头信息即可 |
-| `GET /api/config` | 返回 config.json；不存在→返回默认配置 | 启动时若无则落默认 |
-| `PUT /api/config` | 校验后原子写 config.json | `validateConfig` 服务端再验一次；临时文件+rename |
-| `GET /api/exchange-rate` | 返回 `{rate, source, fetchedAt, stale}` | 缓存<24h 直接回；否则请求 `open.er-api.com/v6/latest/USD`→取 `rates.CNY`，失败回退 `api.frankfurter.dev/v1/latest?base=USD&symbols=CNY`，再失败回缓存+`stale:true` |
-| `POST /api/config/import` | 同 PUT 但语义为导入（返回 errors） | 可合并入 PUT |
+| `GET /api/models` | 返回 models.json | — |
+| `GET /api/config` | 返回 config.json；不存在→返回默认配置 | — |
+| `PUT /api/config` | 校验后写 config.json | 原子化待补 |
+| `GET /api/fx` | `{rate, source, fetchedAt, cached}` | `data/fx-cache.json` 24h 缓存 |
+| `GET /api/nodes` | v2rayN 候选节点清单（脱敏：id/名称/类型/延迟） | 不含任何凭据字段 |
+| `POST /api/pricing/update` | 后台跑 `fetcher.update` → `{jobId}` | body: `{providers?, maxNodes?}` |
+| `GET /api/jobs/<id>` | `{status: running|done|error, report, log}` | 内存任务表 |
+
+价目更新合并规则：仅更新厂商 `tiers`/`contextWindow`/`status`/`fetchedAt`/`checkedAt`；源中新增模型以 `notes:"自动更新新增，请人工核对"` 入库；官方标记 `retired` 的不入库；源中消失的数据集模型只报告 `missingInSource` 不自动删除；写回前备份 `models.json.bak`。`config.json` 永不被更新流程修改。
 
 错误格式：`{ "error": "code", "message": "…", "details": [...] }`，4xx 校验 / 5xx 存储与上游。
 
 ## 5. 汇率策略
 
 - 主源 `open.er-api.com`（免 key、每日更新、需署名：UI 页脚加 `Rates by ExchangeRate-API` 链接）；备源 Frankfurter（ECB、CORS 开放、无需署名）。
-- 服务端文件缓存 `data/exchange-rate-cache.json`（`{rate, source, fetchedAt}`），24h 内不重复请求上游；`manual` 模式不发起任何请求。
+- 服务端文件缓存 `data/fx-cache.json`（`{rate, source, fetchedAt}`），24h 内不重复请求上游；`manual` 模式不发起任何请求。
 - 前端在 auto 模式启动时调用一次；手动「刷新」按钮强制 `?refresh=1` 绕过缓存。
 
 ## 6. 前端结构（index.html 内部）
@@ -160,9 +181,11 @@ validateConfig(json) -> {ok, errors[]}                 // F10 导入校验
 
 ## 8. 部署/运行
 
-- 开发：`node server/index.js` → http://127.0.0.1:8787（端口 env `PORT` 可改）。
-- 无构建产物；git clone + node 即可跑；亦可纯前端打开 `public/index.html`（file:// 下降级 localStorage，汇率自动模式不可用需手动）。
+- 开发：`python -m server.app --port 8787`（或 `npm start`）→ http://127.0.0.1:8787。
+- 价目更新：`python -m server.fetcher [--providers xai,zai] [--max-nodes N] [--dry-run]`（或 `npm run update-pricing`）；节点探测单独跑：`python -m server.nodepool [N]`。
+- 无构建产物；git clone + python 即可跑后端；前端亦可直接打开 `public/index.html`（file:// 下降级 localStorage，汇率自动模式不可用需手动）。
+- 前置条件：价目更新的节点池功能需要本机已安装 v2rayN（读 `%LOCALAPPDATA%/v2rayN` 的只读节点库与 bin/ 下 xray、sing-box）；无 v2rayN 时仍可直连抓取与人工核对。
 
 ## 9. 演化方向（v2+ 预留）
 
-- 站内分组（一个站点多个分组倍率）；输出长度子档（bigmodel.cn 口径）；缓存写入纳入配比；价目自动更新脚本（models.json refresh）；多场景并排对比视图。
+- 站内分组（一个站点多个分组倍率）；输出长度子档（bigmodel.cn 复合口径精确选档）；缓存写入纳入配比；OpenAI Batch/Flex/Fast/Ultrafast 多价目表与 Anthropic/Google Batch 价纳入计算维度；Kimi 页面 JS 渲染的浏览器自动化解析；多场景并排对比视图。

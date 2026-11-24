@@ -1,6 +1,11 @@
 node_modules/
 data/config.json
+data/fx-cache.json
+data/models.json.bak
 data/exchange-rate-cache.json
+tmp_fetch/
+__pycache__/
+*.pyc
 *.log
 .DS_Store
 Thumbs.db

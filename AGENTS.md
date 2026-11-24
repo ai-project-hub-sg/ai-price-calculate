@@ -3,7 +3,7 @@
 ## 项目事实与文档入口
 
 - 目标：本地运行的 AI 中转站价格归一化计算器——把「官方价 × 折扣 × 上下文分档 × token 配比」归一化为可横向比较的每 1M tokens 单价，双币（不换汇/换汇）展示。用户：中转站（one-api/new-api 类）个人用户。非目标：抓取中转站实时价目、按次/多模态计费、多用户同步。
-- 类型：桌面优先的本地 Web 工具。前端=纯 HTML+JS 单文件式（`public/index.html`）+ 独立纯计算模块（`public/calc.js`，供 node:test 复用）；后端=Node 零依赖 `node:http`（`server/index.js`）；持久化=`data/config.json` JSON 文件（无数据库，明确结论）；运行=`node server/index.js`。
+- 类型：桌面优先的本地 Web 工具。前端=纯 HTML+JS 单文件式（`public/index.html`）+ 独立纯计算模块（`public/calc.js`，供 node:test 复用）；后端=Python 标准库零依赖（`server/app.py` http.server）；抓取器=`server/fetcher.py`（官方 .md 适配器）+ `server/nodepool.py`（v2rayN 节点池，VLESS+Reality→HY2，独立 xray/sing-box 端口，不改 v2rayN 配置）；持久化=`data/config.json` JSON 文件；运行=`python -m server.app --port 8787`。
 - 前端复杂度：低—中（数据表+表单工具，无实时/角色/动画要求）。
 - 关键目录：`public/`（前端）、`server/`（后端）、`data/`（价目+运行时配置）、`tests/`、`design/wireframes/`、`docs/`。
 - 每次开始先读：本文件当前阶段表 → `docs/PRD.md`、`docs/ARCHITECTURE.md`。
@@ -13,12 +13,12 @@
 
 | 字段 | 当前值 |
 |---|---|
-| 当前阶段/状态 | 发现/需求/架构 —— **进行中，待审核** |
-| 本阶段允许修改 | `docs/`、`data/models.json`、`design/`、根 AGENTS/README/package.json/.gitignore；`public/`、`server/`、`tests/` 暂不创建实现 |
-| 审核产物与版本 | 首批文档+价目数据（工作区快照，未提交则以此文件集为准） |
-| 最近明确批准 | 未批准（技术栈三问已答：单文件前端 / 前端+轻量后端 / 自定义+示例站） |
-| 未决问题/风险 | R1 价目时效；R2 Gemini 3.1 Pro 价格冲突；R5 建议跳过高保真待确认；R6 角色降级方式待确认 |
-| 下一阶段及进入条件 | A 低保真（`design/wireframes/` + `docs/WIREFRAMES.md`），需本阶段获批准 |
+| 当前阶段/状态 | 发现/需求/架构 —— **用户已批准范围调整**；后端 fetcher/nodepool 已实现并实测；A 低保真待启动 |
+| 本阶段允许修改 | `docs/`、`data/models.json`、`server/`、`design/`、根 AGENTS/README/package.json/.gitignore；`public/`、`tests/` 待线框门后创建 |
+| 审核产物与版本 | docs 五件套 + models.json（145 模型，2026-11-24 官方源全量刷新）+ server/ 抓取链 |
+| 最近明确批准 | 跳过高保真阶段；保留 calc.js；层级化分档开关；官方源抓取+节点池；剔除下线/不存在模型 |
+| 未决问题/风险 | R1 价目时效（已由 F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认 |
+| 下一阶段及进入条件 | A 低保真（`design/wireframes/` + `docs/WIREFRAMES.md`），用户已放行 |
 
 不得将文件存在、自评通过或用户沉默当作批准。批准后更新本表；产物实质变更需确认原批准是否适用。
 
@@ -57,9 +57,10 @@
 
 | 用途 | 命令 | 来源 | 本轮验证状态 |
 |---|---|---|---|
-| 启动 | `npm start`（= `node server/index.js`） | DEVELOPMENT §2 | 未实现 |
+| 启动 | `npm start`（= `python -m server.app --port 8787`） | DEVELOPMENT §2 | 已实现未起服验证 |
+| 价目更新 | `npm run update-pricing`（= `python -m server.fetcher`） | DEVELOPMENT §2 | ✅ 已实测：8 源全通、145 模型合并写回 |
+| 节点池 | `python -m server.nodepool [N]` | DEVELOPMENT §2 | ✅ 已实测：vless-reality/hy2 候选正确、xray 端口可达 |
 | 测试 | `npm test`（= `node --test tests/`） | DEVELOPMENT §2 | 未实现 |
-| 语法自检 | `node --check <file>` | DEVELOPMENT §2 | 未实现 |
 
 未运行不宣称通过；报告区分本次引入/既存/环境限制。
 

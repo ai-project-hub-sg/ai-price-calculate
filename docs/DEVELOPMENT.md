@@ -2,25 +2,29 @@
 
 ## 1. 环境
 
-- Node.js ≥ 20（开发机 v24.21.0）；无 npm 依赖、无构建步骤。
+- Python ≥ 3.10（开发机 3.14.7）——后端/抓取器，零第三方依赖（`http.server`/`urllib`/`sqlite3`/`subprocess`）。
+- Node.js ≥ 20（开发机 v24.21.0）——仅用于 `npm` 命令别名与 `tests/` 单元测试；无 npm 依赖、无构建步骤。
+- 价目更新的节点池依赖本机 v2rayN（读 `%LOCALAPPDATA%/v2rayN` 的 SQLite 节点库与 `bin/` 下 xray、sing-box，全程只读不改配置）；无 v2rayN 时仍可直连抓取 + 人工核对。
 - Windows 开发，路径与脚本以跨平台方式书写（不依赖 shell 特性）。
 
 ## 2. 命令
 
 | 用途 | 命令（工作目录=仓库根） | 状态 |
 |---|---|---|
-| 启动 | `npm start` 即 `node server/index.js` | 待实现（Demo 阶段） |
+| 启动后端+前端 | `npm start` 即 `python -m server.app --port 8787` | 已实现 |
+| 官方价目更新 | `npm run update-pricing` 即 `python -m server.fetcher [--providers …] [--max-nodes N] [--dry-run]` | 已实现 |
+| 节点池探测 | `python -m server.nodepool [节点数]` | 已实现 |
 | 单元测试 | `npm test` 即 `node --test tests/` | 待实现 |
-| 语法自检 | `node --check server/index.js`、`node --check public/calc.js` | 待实现 |
+| 语法自检 | `python -m compileall server`、`node --check public/calc.js` | 部分可用 |
 | 纯前端打开 | 直接双击 `public/index.html` | 待实现 |
 
-当前阶段（发现）已完成：`data/models.json`、docs、AGENTS；`server/`、`public/`、`tests/` 在获批后的 Demo/实现阶段创建。
+当前阶段进度：`data/models.json`（145 模型、8 厂商口径、双时间戳）、`server/`（app/nodepool/fetcher）已实现并实测；`public/`、`tests/` 待建。
 
 ## 3. 开发顺序（获批后）
 
 1. A 低保真：`design/wireframes/` 线框 + `docs/WIREFRAMES.md`（页面分区、交互、状态映射）→ **人工门**
-2. C 示意 Demo：`public/calc.js` + `public/index.html` 可运行（内置 models.json 读取、localStorage 持久化）→ **人工门（产品基线）**
-3. 实现：`server/index.js`（静态+API+汇率代理）、前端接入后端、导入导出 → `docs/PRODUCT_BASELINE.md`
+2. C 示意 Demo：`public/calc.js` + `public/index.html` 可运行（含分档开关层级）→ **人工门（产品基线）**
+3. 实现：前端接入后端 API、导入导出 → `docs/PRODUCT_BASELINE.md`
 4. 验证：`tests/` + TEST_PLAN 全量执行记录
 
 ## 4. 代码约定
@@ -37,8 +41,9 @@
 
 ## 5. 数据维护约定
 
-- `data/models.json` 手工维护：更新时改 `meta.version` 与各 provider `checkedAt`，在 notes 写明来源；PR 附官方页链接。
-- `data/config.json`、`data/exchange-rate-cache.json` 属运行时产物 → `.gitignore`，不提交。
+- `data/models.json` 由 `server/fetcher.py` 从官方 `.md` 页自动更新（手工微调亦可，需改 `meta.version` 并注明来源）。写回前自动备份 `models.json.bak`；`fetchedAt`=抓取日、`officialUpdatedAt`=官方生效日，两概念分开。
+- 可自动抓取的官方源：OpenAI、Anthropic、Google、xAI、DeepSeek、Z.AI、bigmodel.cn（各家 `.md` 文档页）；Kimi 价目表 JS 渲染暂只能人工核对。直连失败走 v2rayN 节点池；不同厂商可能需不同出口节点。
+- `data/config.json`、`data/fx-cache.json`、`data/models.json.bak`、`tmp_fetch/` 属运行时产物 → `.gitignore`，不提交。
 - 价目结构变更（schema 增删字段）需同步 ARCHITECTURE.md 第 3 节与 calc.js 校验，向后兼容读取（缺省字段按约定回退）。
 
 ## 6. Git 约定
