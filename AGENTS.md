@@ -73,7 +73,7 @@
 | 测试 | `npm test`（= `node --test tests/`） | DEVELOPMENT §2 | 未实现 |
 | Go 构建 | `cd server-go && go run ./tools/syncassets && go build -tags "with_utls with_quic" -o aipc-server.exe ./cmd/server`（tags 不可省：Reality/HY2 必需） | ARCHITECTURE §10 | ✅ 已实测：54.7MB 二进制、节点探测 15/25 可用 |
 | Go 测试 | `cd server-go && go test ./internal/fetch` | ARCHITECTURE §10 | ✅ 7 解析器 vs Python 基准一致 |
-| Go 交叉编译 | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server` | ARCHITECTURE §10.6 | 未实跑 |
+| Go 交叉编译 | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server`（tags 同上不可省） | ARCHITECTURE §10.6 | 未实跑 |
 
 未运行不宣称通过；报告区分本次引入/既存/环境限制。
 

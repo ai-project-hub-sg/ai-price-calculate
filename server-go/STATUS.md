@@ -1,15 +1,15 @@
 # Go 版移植 — 会话状态与坑记录
 
 > 用途：跨会话交接。每次动 `server-go/` 前先读本文件 + `docs/DUAL_IMPLEMENTATION.md`。
-> 最近更新：2026-11-24（feat/go-port，5 个提交，未 push）
+> 最近更新：2026-11-25（feat/go-port，15 个提交 vs origin/main）
 
 ## 当前状态
 
-- 分支 `feat/go-port`：`f8250f0`（主体移植）、`9869c5e`（一致性测试+文档）、`e79fbee`（节点测试 UX）、`04e11f9`（DNS panic 修复）、`c8d66e7`（parse-empty 三层修复）
-- **节点缓存已上线**（`proxypool/cache.go`，进程内 1h TTL）：①已解析订阅节点列表缓存（订阅端点会超时，MarkSub/SubNodes/StaleSubNodes，拉失败回退过期副本——测试端点和更新都已接）②节点可用性缓存（Mark/Usable/Absorb）③键=节点 outbound 序列化，换订阅整体失效。「测试节点」和「价目更新」探测结果都写入；更新时温路径直接复用（实测：刚测完 15/25 → 更新 anthropic 跳过重拉+全探测，首个缓存节点秒中合并 18）。`LoadSubscription` 失败自动重试一次（端点常见头部超时/200 后 body 滴漏两种抖法，实测都出现过）。**Python 侧已同步**：`nodepool._NODE_CACHE`（index_id 键）+ `test_nodes()` + `app.py /api/nodes/test`——v2rayN 节点源无订阅概念，订阅缓存/重试属结构性分歧不移植。另修 Python 原生竞态：`find_working_proxy` 曾把 live `pending` dict 传给并发 `probe_node`（兄弟线程 pop 会炸迭代），改为传快照。「测试节点」语义变更：默认回 1h 缓存（`cached:true` 秒回），强制重测走 `force:true`——前端有对应按钮。
-- 全部 `go test ./...` 绿：7 解析器 vs Python 基准、merge 三分支 parity、写回零 diff 往返、订阅解析 5 项、缓存 4 项
-- 实测通过：直连合并、订阅拉取（真实 37 节点订阅）、节点池探测、测试端点端到端
-- 运行中的实例：`aipc-server.exe --port 8787 --data ../data`（embed 前端已含订阅区按钮）
+- 分支 `feat/go-port`：移植主体 + 全部 UX/健壮性迭代完成，**与 Python 版功能等价**（双实现同步规则见 DUAL_IMPLEMENTATION §2）
+- 已上线的功能层：①节点可用性缓存（1h TTL，「测试节点」与「价目更新」共享，温路径直接复用）②订阅节点列表缓存+拉取失败自动重试+过期副本兜底 ③结构化实时进度（phase/targets/done/current 在飞集合 + 胜出瞬间事件 + 完成后终态定格卡）④`/api/nodes/test` 测试端点 + 前端「测试节点/强制重测」按钮 ⑤`/api/shutdown` + 前端「⏻ 关闭服务」按钮
+- **Python 侧全部等价**：`nodepool._NODE_CACHE`、`/api/nodes/test`、progress 契约、shutdown 端点均同步；订阅相关三件（列表缓存/重试/兜底）为结构性分歧（v2rayN 无订阅概念）
+- 全部 `go test ./...` 绿；Python 端到端实测通过（节点测试 23/25 可用、anthropic 经节点合并 18）
+- 运行实例：Go `aipc-server.exe --port 8787 --data ../data` · Python `python -m server.app --port 8788`（数据目录固定仓库 data/）
 
 ## 已踩的坑（防再踩）
 
@@ -36,22 +36,39 @@ Windows 下 `go build -o aipc-server.exe` 覆盖**正在运行的** exe 时，�
 
 ### 5. 「200+大字节=抓到」被墙页骗过（双边逻辑洞，已修）
 
-anthropic 直连 307→`app-unavailable-in-region` 311271B 落地页：200、>500B、解析 0 行，旧逻辑记 `parse-empty` 不重试。三连修：①直连后预解析，空→转节点池；②节点胜出校验加「该源解析器解出非空行」——探测时 blocked 页不再算赢（实测前 15 节点全 blocked 全拒，第 16 个日本出口拿到 40637B 真页→合并 18 模型）；③胜出者复用探测时校验过的 body——**重抓有 TOCTOU 抖动**（探测真页/重抓墙页实测发生）。Python 侧 `nodepool.find_working_proxy(validate=)` + `fetcher._validate_body` 同步，顺带省掉 `proxy_through_node` 子进程重启。根因教训：**「内容有效」要用领域校验（解析器），不要用传输层信号（status/字节数）推断。**
+anthropic 直连 307→`app-unavailable-in-region` 311271B 落地页：200、>500B、解析 0 行，旧逻辑记 `parse-empty` 不重试。三连修：①直连后**循环内**预解析（统一后置检查会让 blocked 页在 direct 阶段假绿）；②节点胜出校验加「该源解析器解出非空行」；③胜出者复用探测时校验过的 body——**重抓有 TOCTOU 抖动**（探测真页/重抓墙页实测发生）。Python 同步。根因教训：**「内容有效」要用领域校验（解析器），不要用传输层信号（status/字节数）推断。**
 
-### 6. 前端轮询报「not found」（未定论）
+### 6. 进度显示的并发/时序坑（已修，UX 三条）
+
+- `progress.current` 单值被 4 个并发节点互相覆盖 + 快完成被 1.5s 轮询错过 → 改**在飞集合**（OnTarget/OnTargetDone 加减），且 emit 须在加入**之后**调用才蓝
+- Go map/set 并发写：inflight 从探测 goroutine 改 → Go 用 `sync.Mutex`、Python 用 `threading.Lock` + `bump()`，读快照也要拿锁（set changed size during iteration）
+- 厂家被解决瞬间无 emit → done 只在下一事件捎带出现，最后一个解决完即 merge→done→卡片消失，绿色从没被采到 → `OnWin`/absorb 胜出瞬间 emit + doneSet 即时置位 + **前端 done 后定格终态卡**（✓绿/✗红）
+- Go-only bug：冷路径胜出者删的是 FindWorking 内部 pending 副本，外层 needProxy 没动 → 经节点成功的厂家被误列 unreachable（Python 用 probe["pending"] 无此病）
+
+### 7. v2rayN 7.x DB schema 漂移（Python-only，已修）
+
+`ConfigVersion=4` 的库：VLESS UUID 移到 `Password` 列（`Id`=NULL → xray `invalid UUID:` 启动即崩）、flow 挪进 `ProtoExtra` JSON、transport 细节挪进 `TransportExtra` JSON。症状：全部节点「本地端口未就绪」秒灭，跟 v2rayN 开没开无关（独立拉子进程）。修：`_xray_vless_config` 全部新旧兼容读取；`_LocalProxy` 失败时吐 xray stderr 尾行（之前 DEVNULL 吞掉真错）+ exe 存在性预检。教训：**第三方数据源的 schema 要做版本兼容读取；子进程失败必须能看到它的 stderr**。
+
+### 8. urllib per-op 超时累计（Python，已修）
+
+`fetch_url(timeout=12)` 的 timeout 只管单次 socket 操作——DNS + 多 IP 顺序重试每个吃满，google 直连实测卡 70s。修：daemon 线程包**总耗时硬上限** `timeout*1.5+2`（线程杀不死，超时放弃，代价可接受）。对照：Go 的 http.Client.Timeout 天然是全程上限，无此病。
+
+### 9. 前端轮询报「not found」（未定论）
 
 用户实测价目更新：直连阶段日志正常，随后报 `✗ 失败: not found`。排查结论：`j.status` 非 running/done 且 `j.error='not found'` = 轮询拿到 `/api/jobs/<id>` 的 404。本地复现同一订阅同一 job → `status:done` 正常完成，未复现。已加 API 请求日志（`/api/*` → stderr 打 `方法 路径 → 状态码`），**若再现先看服务端 stdout 轨迹**（是否请求落到不含该 job 的实例/是否请求路径异常）。怀疑方向：瞬时因素（实例重启竞态/浏览器预览代理），无代码级证据前不改逻辑。
 
 ## 待办 / 未验证
 
-- [ ] 用户重测：保存按钮反馈、测试节点按钮（15/25 可用结果已知）、价目更新完整链路
-- [ ] 「not found」若再现 → 拿服务端日志定位
-- [ ] Linux 交叉编译产物在目标机实跑（`GOOS=linux ... -tags`）
-- [ ] push `feat/go-port` 需当次授权（触发署名/作者检查技能）
-- [ ] 节点探测 `maxNodes=25` 默认值与前端展示（37 节点只测 25）是否需要暴露给用户配
+- [x] 用户重测：订阅区按钮、测试节点、价目更新链路、进度显示、关闭服务 —— 全部通过
+- [x] push `feat/go-port` —— 已授权，guard 检查过（15 提交全 `notebook` 身份、0 AI 署名、无二进制被追踪）
+- [ ] 「not found」若再现 → 拿服务端日志定位（日志已就位）
+- [ ] Linux 交叉编译产物在目标机实跑（`GOOS=linux ... -tags "with_utls with_quic"`）
+- [ ] 节点探测 `maxNodes=25` 默认值是否需要暴露给用户配
+- [ ] Python「最近」行的在飞集合/胜出事件在 v2rayN 节点上端到端看过（逻辑对称，未逐帧目验）
 
 ## 环境
 
-- `server-go/aipc-server.exe`（54.7MB，含 utls+quic tags）在仓库外 .gitignore
+- `server-go/aipc-server.exe`（~55MB，含 utls+quic tags）在 .gitignore
 - `data/config.json` 已含用户真实 `proxySubscription`（gitignore，勿提交）
-- `data/models.json` 曾被测试更新改过——已 `git checkout` 恢复；再测试会再次产生写回
+- `data/models.json` 被测试更新改过属正常数据产物；提交代码前 `git checkout -- data/models.json` 恢复
+- Python 版节点源 = `%LOCALAPPDATA%\v2rayN\guiConfigs\guiNDB.db`（ConfigVersion=4，v7 schema）

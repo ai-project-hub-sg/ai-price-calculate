@@ -177,11 +177,13 @@ validateConfig(json) -> {ok, errors[]}                 // F10 导入校验（含
 | `GET /` `GET /<file>` | 服务 `public/` 静态文件 | index.html 默认；防目录穿越 |
 | `GET /api/models` | 返回 models.json | — |
 | `GET /api/config` | 返回 config.json；不存在→返回默认配置 | — |
-| `PUT /api/config` | 校验后写 config.json | 原子化待补 |
+| `PUT /api/config` | 校验后写 config.json | 原子写（临时文件+rename） |
 | `GET /api/fx` | `{rate, source, fetchedAt, cached}` | `data/fx-cache.json` 24h 缓存 |
 | `GET /api/nodes` | v2rayN 候选节点清单（脱敏：id/名称/类型/延迟） | 不含任何凭据字段 |
+| `POST /api/nodes/test` | 节点连通性探测 job（1h 结果缓存，`force:true` 强制重测） | `{jobId}` → report `{total, probed, usable, results, cached}` |
 | `POST /api/pricing/update` | 后台跑 `fetcher.update` → `{jobId}` | body: `{providers?, maxNodes?}` |
-| `GET /api/jobs/<id>` | `{status: running|done|error, report, log}` | 内存任务表 |
+| `GET /api/jobs/<id>` | `{status, report, log, progress, startedAt}` | 内存任务表；progress 契约见 DUAL_IMPLEMENTATION §2 |
+| `POST /api/shutdown` | 先回 `{ok,shutdown:true}` 再延时停机 | 前端「⏻ 关闭服务」按钮 |
 
 价目更新合并规则：仅更新厂商 `tiers`/`contextWindow`/`status`/`fetchedAt`/`checkedAt`；源中新增模型以 `notes:"自动更新新增，请人工核对"` 入库；官方标记 `retired` 的不入库；源中消失的数据集模型只报告 `missingInSource` 不自动删除；写回前备份 `models.json.bak`。`config.json` 永不被更新流程修改。
 
@@ -274,7 +276,7 @@ Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会�
 - `PUT /api/config`：两版均「校验靠前端 validateConfig，服务端原子写透传」——行为一致，无服务端 schema 校验（本工具本地/VPS 自用前提）。
 - `/api/nodes`：节点来源不同（订阅 vs v2rayN），见 10.2。
 - 监听地址：Go `--host` 默认 127.0.0.1 与 Python 一致；nginx 同机反代无需放开。
-- Go 版二进制 ~49MB（内嵌 sing-box），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build` 直接产物。
+- Go 版二进制 ~55MB（内嵌 sing-box，含 uTLS+QUIC tags），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build -tags "with_utls with_quic"` 直接产物。
 
 ### 10.6 部署形态（Linux VPS + nginx）
 

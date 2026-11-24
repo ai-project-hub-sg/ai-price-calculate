@@ -12,8 +12,9 @@ python -m server.app          # → http://127.0.0.1:8787
 npm start                     # 同上（需 Node，仅为别名）
 
 # 方式 B：Go 单二进制（适合部署，内嵌前端与节点池）
-cd server-go && go run ./tools/syncassets && go build -o aipc-server ./cmd/server
+cd server-go && go run ./tools/syncassets && go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 ./aipc-server                 # → http://127.0.0.1:8787
+# -tags 不可省：Reality 要 with_utls、Hysteria2 要 with_quic，缺了全部节点出站初始化失败
 ```
 
 打开 `http://127.0.0.1:8787/` 即见演示数据（约 700+ 行结果）。后端不可用时直接双击 `public/index.html` 也能跑（localStorage 存储 + 演示数据集）。
@@ -28,7 +29,7 @@ cd server-go && go run ./tools/syncassets && go build -o aipc-server ./cmd/serve
 - **配比分层**：提供商 > 站 > 模型覆盖 > 模型级预设 > 厂商级预设 > 档案场景，默认 4/95/0/1；内置社区实测预设（编码智能体 ~95% 缓存命中等 5 组场景 + 8 厂商）
 - **计价要素**：上下文分档（操作符编辑+重叠/缺漏校验）、缓存写双 TTL（5m/1h）、闲忙时窗口（DeepSeek UTC 01-04/06-10 工作日）、非高峰折扣、CNY 原生币种
 - **账单核对**：贴入 CSV（时间/站/商/模型/用量/实际扣费/备注），按备注语义判 1h 缓存写与忙闲时，比对官方窗口标黄，理论 vs 实际差值+可调误差判据
-- **官方价目**：145 模型 8 厂商全表 + 一键更新（后台 job 轮询，节点池支持 v2rayN）
+- **官方价目**：145 模型 8 厂商全表 + 一键更新（后台 job 轮询 + 实时进度卡；节点池：Python 用 v2rayN 库、Go 用代理订阅，1h 可用性缓存）+ UI 一键关闭后端
 
 ## 文档
 
