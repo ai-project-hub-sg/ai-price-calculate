@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.16 · f653adb</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.17 · b5e5ee7</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -442,9 +442,10 @@ function editStation(st){
       st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();st.scope=scope;});
 }
 
-/** 提供范围编辑器（站/商共用）：厂商→系列→模型 三级联选树，全不勾=不限制 */
-function scopeEditor(scope,onVendorChange){
-  const models=C.allModels(state.dataset);
+/** 提供范围编辑器（站/商共用）：厂商→系列→模型 三级联选树，全不勾=不限制；parentScope=上级范围，可选项被其裁剪 */
+function scopeEditor(scope,onVendorChange,parentScope){
+  const models=C.allModels(state.dataset)
+    .filter(e=>!parentScope||C.inScope(parentScope,e.model,e.vendor.id));
   const tree=new Map();
   for(const e of models){
     const vid=e.vendor.id;
@@ -541,8 +542,8 @@ function editProvider(st,pr){
         onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
     }
   };
-  const scEd=scopeEditor(scope,renderVS);
-  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价；不得超出站点范围）'),scEd.el);
+  const scEd=scopeEditor(scope,renderVS,st.scope);
+  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价；可选项已按站点范围裁剪）'),scEd.el);
   const mx=mixEditor('配比',pr.mix);
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
     row('默认折扣',discMode,discWrap),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
