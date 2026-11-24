@@ -10,7 +10,7 @@ window.DEMO_CONFIG = {
       exchangeRate: { mode: "auto", manualValue: null, auto: { value: null, source: null, fetchedAt: null } },
       scenario: {
         promptTokens: 128000,
-        mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 },
+        mix: { input: 4, cacheRead: 95, cacheWrite: 0, output: 1 },
         offPeak: false,
         presets: [
           { id: "pp-1", name: "对话均衡", promptTokens: 128000, mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 } },
@@ -89,6 +89,12 @@ window.DEMO_CONFIG = {
         { id: "gov-1", modelId: "gemini-3.8-flash", discount: null,
           tieredPricing: { enabled: true },
           basePrice: { tiers: [{ upToTokens: null, input: 0.7, output: 3.5, cacheRead: 0.07 }] } }
+      ],
+      vendorMix: [
+        { vendorId: "anthropic", mix: { input: 3, cacheRead: 90, cacheWrite: 2, output: 5 } }
+      ],
+      modelMix: [
+        { modelId: "gpt-6.2-astra", mix: { input: 85, cacheRead: 5, cacheWrite: 5, output: 5 } }
       ],
       display: { precision: 4, targetCurrency: "CNY" }
     },

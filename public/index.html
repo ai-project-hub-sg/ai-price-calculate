@@ -69,7 +69,8 @@
   <label>配比 输入<input type="number" id="mixI" min="0" step="0.1">% 缓存读<input type="number" id="mixC" min="0" step="0.1">% 缓存写<input type="number" id="mixW" min="0" step="0.1">% 输出<input type="number" id="mixO" min="0" step="0.1">%</label>
   <span class="sub" id="mixNorm"></span>
   <label>预设 <select id="presetSel"><option value="">—</option></select>
-    <button id="presetSave" title="保存当前配比为预设">存</button></label>
+    <button id="presetSave" title="保存当前配比为预设">存</button>
+    <button id="mixPresets" title="公共/厂商/模型级配比预设">配比预设…</button></label>
   <label><input type="checkbox" id="scOffPeak"> 非高峰</label>
   <label><input type="checkbox" id="scTiered" checked> 分档计价<small class="sub">(账户级)</small></label>
   <label>汇率 <select id="fxMode"><option value="auto">自动</option><option value="manual">手动</option></select>
@@ -438,6 +439,23 @@ function editModelOverride(pr,o){
     });
     tierBox.append(h('button',{onclick:()=>{rows.push({op:'>',value:'',input:'',cacheRead:'',output:''});renderT();}},'＋加档'),
       h('small',{class:'dim'},'　校验：禁止重叠与缺漏，保存时检查'));
+    // 快速配置：填阈值 → 低于区段自动填官方价，只需填超档价
+    const thrIn=inp('','number');thrIn.placeholder='阈值如272000';thrIn.style.width='90px';
+    tierBox.append(h('div',{class:'row'},'快速分档：阈值',thrIn,
+      h('button',{onclick:()=>{
+        const thr=+thrIn.value;if(!(thr>0))return alert('先填阈值');
+        const entry=[...C.modelIndex(state.dataset).values()].find(e=>e.model.id===mid);
+        if(!entry)return alert('模型不在价目库');
+        const nr=entry.model.tiers.map(t=>t.upToTokens!=null
+          ?{op:'≤',value:t.upToTokens,input:t.input,cacheRead:t.cacheRead??'',output:t.output}
+          :{op:'all',value:'',input:t.input,cacheRead:t.cacheRead??'',output:t.output});
+        const last=nr[nr.length-1];
+        if(last.op==='all'){nr[nr.length-1]={op:'≤',value:thr,input:last.input,cacheRead:last.cacheRead,output:last.output};
+          nr.push({op:'>',value:thr,input:'',cacheRead:'',output:''});}
+        else nr.push({op:'>',value:thr,input:'',cacheRead:'',output:''});
+        rows.splice(0,rows.length,...nr);renderT();
+      }},'官方价补低档'),
+      h('small',{class:'dim'},'≤阈值档自动填官方价，超档价自填')));
   };
   renderT();
   const mx=mixEditor('配比',o.mix);
@@ -506,6 +524,46 @@ function renderEstimate(){
   calc();
 }
 
+// ---------- 配比预设（公共/厂商/模型级） ----------
+function editMixPresets(){
+  const pf=profile();
+  const def={...pf.scenario.mix};
+  const vm=JSON.parse(JSON.stringify(pf.vendorMix||[]));
+  const mm=JSON.parse(JSON.stringify(pf.modelMix||[]));
+  const mixInputs=(m)=>{const i=inp(m?.input??'','number'),c=inp(m?.cacheRead??'','number'),w=inp(m?.cacheWrite??'','number'),o=inp(m?.output??'','number');
+    [i,c,w,o].forEach(x=>x.style.width='56px');
+    return {els:[i,c,w,o],get:()=>({input:+i.value||0,cacheRead:+c.value||0,cacheWrite:+w.value||0,output:+o.value||0})};};
+  const di=mixInputs(def);
+  const vList=h('div',{}),mList=h('div',{});
+  const renderV=()=>{vList.innerHTML='';
+    vm.forEach((v,i)=>{
+      const sel=h('select',{},...state.dataset.providers.map(p=>h('option',{value:p.id,selected:v.vendorId===p.id},p.id)));
+      sel.onchange=()=>{v.vendorId=sel.value;};
+      const mi=mixInputs(v.mix);
+      vList.append(h('div',{class:'row'},sel,'输入',mi.els[0],'缓读',mi.els[1],'缓写',mi.els[2],'输出',mi.els[3],
+        h('button',{onclick:()=>{vm.splice(i,1);renderV();}},'🗑')));
+      mi.els.forEach(e=>e.onchange=()=>{v.mix=mi.get();});
+    });
+    vList.append(h('button',{onclick:()=>{vm.push({vendorId:state.dataset.providers[0].id,mix:{input:0,cacheRead:0,cacheWrite:0,output:0}});renderV();}},'＋添加厂商预设'));
+  };
+  const renderM=()=>{mList.innerHTML='';
+    mm.forEach((v,i)=>{
+      const idIn=inp(v.modelId||'');idIn.placeholder='模型id';idIn.onchange=()=>{v.modelId=idIn.value.trim();};
+      const mi=mixInputs(v.mix);
+      mList.append(h('div',{class:'row'},idIn,'输入',mi.els[0],'缓读',mi.els[1],'缓写',mi.els[2],'输出',mi.els[3],
+        h('button',{onclick:()=>{mm.splice(i,1);renderM();}},'🗑')));
+      mi.els.forEach(e=>e.onchange=()=>{v.mix=mi.get();});
+    });
+    mList.append(h('button',{onclick:()=>{mm.push({modelId:'',mix:{input:0,cacheRead:0,cacheWrite:0,output:0}});renderM();}},'＋添加模型预设'));
+  };
+  renderV();renderM();
+  drawer('配比预设',[h('div',{class:'hint'},'生效顺序：提供商 > 中转站 > 具体模型 > 厂商 > 公共默认（场景条上的配比即公共默认）'),
+    h('div',{class:'box'},h('b',{},'公共默认'),h('div',{class:'row'},'输入',di.els[0],'缓读',di.els[1],'缓写',di.els[2],'输出',di.els[3])),
+    h('div',{class:'box'},h('b',{},'厂商级预设'),vList),
+    h('div',{class:'box'},h('b',{},'模型级预设'),mList)],
+    ()=>{pf.scenario.mix=di.get();pf.vendorMix=vm.filter(v=>v.vendorId);pf.modelMix=mm.filter(v=>v.modelId);});
+}
+
 // ---------- 账单核对 ----------
 const SAMPLE_CSV=`调用时间,中转站,服务商,模型,输入,输出,缓存读,缓存写,实际扣费,备注
 2026-11-24T03:00:00Z,示例站A,批发上游,claude-sonnet-5-5,20000,4000,8000,2000,0.052,
@@ -571,6 +629,7 @@ function bindGlobal(){
     if(p){profile().scenario.mix={...p.mix};profile().scenario.promptTokens=p.promptTokens;render();}};
   $('#presetSave').onclick=()=>{const n=prompt('预设名');if(!n)return;
     profile().scenario.presets.push({id:'p'+Date.now(),name:n,promptTokens:profile().scenario.promptTokens,mix:{...profile().scenario.mix}});render();};
+  $('#mixPresets').onclick=editMixPresets;
   $('#scOffPeak').onchange=e=>{profile().scenario.offPeak=e.target.checked;render();};
   $('#scTiered').onchange=e=>{profile().tieredPricing={enabled:e.target.checked};render();};
   $('#fxMode').onchange=e=>{profile().exchangeRate.mode=e.target.value;if(e.target.value==='manual')profile().exchangeRate.manualValue=+$('#fxVal').value||7.1;loadFx().then(render);};

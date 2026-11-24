@@ -171,14 +171,24 @@ function blendedPrice(u, mix) {
   return (u.input * m.input + u.cacheRead * m.cacheRead + u.cacheWrite5m * m.cacheWrite + u.output * m.output) * u.discount;
 }
 
-/** 配比逐级解析：模型覆盖 > 提供商 > 站 > 档案场景（首个有效非空配比） */
-function resolveMix(profile, station, provider, mOv) {
-  const cand = [mOv && mOv.mix, provider && provider.mix, station && station.mix,
-                profile.scenario && profile.scenario.mix];
+/** 账户整体公共预设默认值（未在任何层级配置时使用） */
+const DEFAULT_MIX = { input: 4, cacheRead: 95, cacheWrite: 0, output: 1 };
+
+/**
+ * 配比逐级解析，优先级：提供商 > 中转站 > 具体模型(覆盖/档案级模型预设)
+ * > 厂商(档案级厂商预设) > 档案公共预设 > DEFAULT_MIX。
+ * entry 用于查厂商/模型预设，可省略（此时跳过该两级）。
+ */
+function resolveMix(profile, station, provider, mOv, entry) {
+  const mm = entry && (profile.modelMix || []).find(v => v.modelId === entry.model.id);
+  const vm = entry && (profile.vendorMix || []).find(v => v.vendorId === entry.vendor.id);
+  const cand = [provider && provider.mix, station && station.mix,
+                mOv && mOv.mix, mm && mm.mix, vm && vm.mix,
+                profile.scenario && profile.scenario.mix, DEFAULT_MIX];
   for (const m of cand) {
     if (m && ((+m.input || 0) + (+m.cacheRead || 0) + (+m.cacheWrite || 0) + (+m.output || 0)) > 0) return m;
   }
-  return { input: 1, cacheRead: 0, cacheWrite: 0, output: 0 };
+  return DEFAULT_MIX;
 }
 
 // ---------- 结果行生成 ----------
@@ -205,7 +215,7 @@ function summaryRows(profiles, dataset, rate) {
           });
           if (!u.inScope) continue;
           const mOv = (pr.modelOverrides || []).find(o => o.modelId === entry.model.id);
-          const rowMix = resolveMix(pf, st, pr, mOv);
+          const rowMix = resolveMix(pf, st, pr, mOv, entry);
           const cur = entry.vendor.currency || "USD";
           const native = blendedPrice(u, rowMix);
           // 官方基准价（无折扣、官方 tier、同档位、同配比）
@@ -290,11 +300,11 @@ function newProfile(name) {
                     auto: { value: null, source: null, fetchedAt: null } },
     scenario: {
       promptTokens: 128000,
-      mix: { input: 0.7, cacheRead: 0.2, output: 0.1 },
+      mix: { ...DEFAULT_MIX },
       offPeak: false, presets: [], activePreset: null,
     },
     tieredPricing: { enabled: true },
-    stations: [], modelOverrides: [],
+    stations: [], modelOverrides: [], vendorMix: [], modelMix: [],
     display: { precision: 4, targetCurrency: CNY },
   };
 }
@@ -542,7 +552,7 @@ const Calc = {
   resolveUnitPrices, resolveMix, blendedPrice, summaryRows, officialPrice,
   estimateRequest, newProvider, newStation, newProfile, defaultConfig,
   cloneNode, renameStation, validateConfig, validateTiers, tierLabelOf, fmtK,
-  tiersFromEditor, isPeakTime, parseCsv, parseBillCsv, reconcile, cacheWritePrice,
+  tiersFromEditor, isPeakTime, parseCsv, parseBillCsv, reconcile, cacheWritePrice, DEFAULT_MIX,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = Calc;
