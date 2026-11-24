@@ -59,6 +59,7 @@ python server-go/tools/gen_fixtures.py
 
 - **`/api/nodes` 节点来源**：Python=v2rayN sqlite；Go=订阅 URI。字段形态保持兼容（id/名称/类型/延迟或地址），但来源与数量天然不同。
 - **节点池实现**：Python 拉子进程（xray/sing-box 二进制）；Go 进程内嵌 sing-box 库。探测并发度、超时值各自实现内可调，不追求一致。
+- **节点可用性缓存**：仅 Go 侧（`proxypool.Cache`，进程内 1h TTL：订阅节点列表 + 节点可用性，温路径复用免重探）。Python 侧每次全量探测——**待补**：`nodepool` 加等价 TTL 缓存层。对外契约（report 形状）不受缓存影响。
 - **启动参数**：Go 有 `--host/--data/--public`（部署需要）；Python 只有 `--port`（开发机约定 `data/`、`public/` 相对仓库根）。
 
 ## 6. 提交前检查单

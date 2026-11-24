@@ -1,12 +1,13 @@
 # Go 版移植 — 会话状态与坑记录
 
 > 用途：跨会话交接。每次动 `server-go/` 前先读本文件 + `docs/DUAL_IMPLEMENTATION.md`。
-> 最近更新：2026-11-24（feat/go-port，3 个提交，未 push）
+> 最近更新：2026-11-24（feat/go-port，5 个提交，未 push）
 
 ## 当前状态
 
-- 分支 `feat/go-port`：`f8250f0`（主体移植）、`9869c5e`（一致性测试+文档）、再加节点测试 UX 批次
-- 全部 `go test ./...` 绿：7 解析器 vs Python 基准、merge 三分支 parity、写回零 diff 往返、订阅解析 5 项
+- 分支 `feat/go-port`：`f8250f0`（主体移植）、`9869c5e`（一致性测试+文档）、`e79fbee`（节点测试 UX）、`04e11f9`（DNS panic 修复）、`c8d66e7`（parse-empty 三层修复）
+- **节点缓存已上线**（`proxypool/cache.go`，进程内 1h TTL）：①已解析订阅节点列表缓存（订阅端点会超时，MarkSub/SubNodes/StaleSubNodes，拉失败回退过期副本）②节点可用性缓存（Mark/Usable/Absorb）③键=节点 outbound 序列化，换订阅整体失效。「测试节点」和「价目更新」探测结果都写入；更新时温路径直接复用（实测：刚测完 15/25 → 更新 anthropic 跳过重拉+全探测，首个缓存节点秒中合并 18）。**Python 侧未实现——有意分歧点，待补。**
+- 全部 `go test ./...` 绿：7 解析器 vs Python 基准、merge 三分支 parity、写回零 diff 往返、订阅解析 5 项、缓存 4 项
 - 实测通过：直连合并、订阅拉取（真实 37 节点订阅）、节点池探测、测试端点端到端
 - 运行中的实例：`aipc-server.exe --port 8787 --data ../data`（embed 前端已含订阅区按钮）
 

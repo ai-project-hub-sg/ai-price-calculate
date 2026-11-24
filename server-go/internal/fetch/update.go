@@ -19,6 +19,7 @@ type Options struct {
 	ModelsPath string
 	DryRun     bool
 	Log        func(string)
+	NodeCache  *proxypool.Cache // 非nil启用节点可用性缓存（温路径复用）
 }
 
 // minPricingBytes 判定"页面真实抓到"的最小字节数——Kimi 等 JS 渲染页
@@ -101,16 +102,38 @@ func Update(o Options) (map[string]any, error) {
 			log(fmt.Sprintf("%d 个源直连失败且未配置代理订阅地址，标记不可达", len(needProxy)))
 			report["unreachable"] = sortedMapKeys(needProxy)
 		} else {
-			nodes, err := proxypool.LoadSubscription(o.SubURL, log)
-			if err != nil {
-				log("代理订阅拉取失败: " + err.Error())
-				report["unreachable"] = sortedMapKeys(needProxy)
-				for pid := range needProxy {
-					provs[pid].(map[string]any)["error"] = "直连失败；订阅拉取失败: " + err.Error()
+			// 节点列表也进缓存：订阅端点本身会超时/抖动，1h 内不必次次重拉；
+			// 拉取失败时回退到过期副本兜底，不至于整轮更新报废。
+			var nodes []proxypool.Node
+			if o.NodeCache != nil {
+				nodes = o.NodeCache.SubNodes(o.SubURL)
+				if len(nodes) > 0 {
+					log(fmt.Sprintf("订阅节点列表缓存命中：%d 节点", len(nodes)))
 				}
-			} else {
-				log(fmt.Sprintf("节点池探测 %d 个目标（订阅节点 %d 个，上限 %d）…",
-					len(needProxy), len(nodes), maxNodes))
+			}
+			if len(nodes) == 0 {
+				loaded, lerr := proxypool.LoadSubscription(o.SubURL, log)
+				if lerr == nil {
+					nodes = loaded
+					if o.NodeCache != nil {
+						o.NodeCache.MarkSub(o.SubURL, nodes)
+					}
+				} else if o.NodeCache != nil {
+					if stale := o.NodeCache.StaleSubNodes(o.SubURL); len(stale) > 0 {
+						log(fmt.Sprintf("订阅拉取失败（%s），回退缓存节点列表 %d 个（可能过期）",
+							lerr.Error(), len(stale)))
+						nodes = stale
+					}
+				}
+				if len(nodes) == 0 {
+					log("代理订阅拉取失败: " + lerr.Error())
+					report["unreachable"] = sortedMapKeys(needProxy)
+					for pid := range needProxy {
+						provs[pid].(map[string]any)["error"] = "直连失败；订阅拉取失败: " + lerr.Error()
+					}
+				}
+			}
+			if len(nodes) > 0 {
 				// 胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也返回 200。
 				validate := func(pid string, body []byte) bool {
 					src := Sources[pid]
@@ -120,11 +143,61 @@ func Update(o Options) (map[string]any, error) {
 					rows, err := safeParse(src.Parse, string(body))
 					return err == nil && len(rows) > 0
 				}
-				probe := proxypool.FindWorking(nodes, needProxy, maxNodes, 4, 8_000, validate,
-					func(tested int, pending []string) {
-						log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
-					})
-				for pid, win := range probe.Winners {
+				winners := map[string]proxypool.Winner{}
+				probed := map[string]bool{} // 本 run 已试节点（Key），冷路径不重复
+				// 温路径：1h 内测过的可用节点直接复用，逐目标「抓+校验」，
+				// 不重跑全池探测（点过「测试节点」再更新就靠这层省）。
+				if o.NodeCache != nil {
+					if usable := o.NodeCache.Usable(o.SubURL, nodes); len(usable) > 0 {
+						log(fmt.Sprintf("节点缓存命中：%d 个近期可用节点直接复用", len(usable)))
+						for _, n := range usable {
+							if len(needProxy) == 0 {
+								break
+							}
+							probed[proxypool.Key(n)] = true
+							lb, lerr := proxypool.StartNode(n)
+							if lerr != nil {
+								o.NodeCache.Mark(o.SubURL, n, false, 0, lerr.Error())
+								log(fmt.Sprintf("  缓存节点 %s 已失效，顺延下一节点", n.Label()))
+								continue
+							}
+							won := false
+							for pid, u := range needProxy {
+								r := proxypool.FetchURL(u, lb.Port, 15_000)
+								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
+									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
+									delete(needProxy, pid)
+									won = true
+								}
+							}
+							lb.Close()
+							if won {
+								o.NodeCache.Mark(o.SubURL, n, true, 0, "")
+							}
+						}
+					}
+				}
+				if len(needProxy) > 0 {
+					rest := []proxypool.Node{}
+					for _, n := range nodes {
+						if !probed[proxypool.Key(n)] {
+							rest = append(rest, n)
+						}
+					}
+					log(fmt.Sprintf("节点池探测 %d 个目标（候选节点 %d 个，上限 %d）…",
+						len(needProxy), len(rest), maxNodes))
+					probe := proxypool.FindWorking(rest, needProxy, maxNodes, 4, 8_000, validate,
+						func(tested int, pending []string) {
+							log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
+						})
+					if o.NodeCache != nil {
+						o.NodeCache.Absorb(o.SubURL, probe.Reports)
+					}
+					for pid, win := range probe.Winners {
+						winners[pid] = win
+					}
+				}
+				for pid, win := range winners {
 					pr := provs[pid].(map[string]any)
 					pr["via"] = "node:" + win.Label
 					body := win.Body // 探测时已校验非空解析，直接复用
@@ -138,7 +211,7 @@ func Update(o Options) (map[string]any, error) {
 						log(fmt.Sprintf("[%s] 经节点 %s 成功 %dB", pid, win.Label, len(body)))
 					}
 				}
-				report["unreachable"] = probe.Pending
+				report["unreachable"] = sortedMapKeys(needProxy)
 			}
 		}
 	}

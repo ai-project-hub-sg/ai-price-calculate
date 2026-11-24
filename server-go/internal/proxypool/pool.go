@@ -276,7 +276,9 @@ type NodeTestResult struct {
 // sing-box 端口拉一次 probeURL，2xx 即判可用。与 FindWorking 不同——不为
 // 特定目标找首个胜者，而是完整测一遍给出可用率，供「测试节点」按钮展示。
 // 显式说明：探测目标固定为 probeURL（连通性），不代表一定能到某个价目页。
+// cache 非nil时结果写入缓存（subURL 为键空间），供价目更新温路径直接复用。
 func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeoutMS int,
+	cache *Cache, subURL string,
 	onProgress func(tested, total int)) []NodeTestResult {
 	probed := nodes
 	if maxNodes > 0 && len(probed) > maxNodes {
@@ -312,6 +314,9 @@ func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeout
 					}
 				}
 				results[j] = r
+				if cache != nil {
+					cache.Mark(subURL, n, r.OK, r.Ms, r.Error)
+				}
 			}(j, probed[j])
 		}
 		wg.Wait()

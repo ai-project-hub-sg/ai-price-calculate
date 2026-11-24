@@ -60,13 +60,16 @@ type Server struct {
 	PublicDir string // 非空 = 磁盘目录优先（开发）；空 = 用 PublicFS
 	PublicFS  fs.FS  // embed 的 public/（内容已含 public/ 前缀）
 
+	nodeCache *proxypool.Cache // 「测试节点」与「价目更新」共享的可用性缓存
+
 	mu   sync.Mutex
 	jobs map[string]*job
 }
 
 func New(dataDir, publicDir string, publicFS fs.FS) *Server {
 	return &Server{DataDir: dataDir, PublicDir: publicDir,
-		PublicFS: publicFS, jobs: map[string]*job{}}
+		PublicFS: publicFS, jobs: map[string]*job{},
+		nodeCache: proxypool.NewCache(time.Hour)}
 }
 
 func (s *Server) modelsPath() string { return filepath.Join(s.DataDir, "models.json") }
@@ -332,12 +335,14 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int) {
 		finish("error", nil, err)
 		return
 	}
+	s.nodeCache.MarkSub(sub, nodes) // 列表入缓存：更新时免重拉
 	probed := maxNodes
 	if len(nodes) < probed {
 		probed = len(nodes)
 	}
 	logf(fmt.Sprintf("探测前 %d/%d 节点（连通性目标 %s）…", probed, len(nodes), probeURL))
 	results := proxypool.TestNodes(nodes, probeURL, maxNodes, 4, 10_000,
+		s.nodeCache, sub,
 		func(tested, total int) {
 			logf(fmt.Sprintf("  已测 %d/%d", tested, total))
 		})
@@ -397,7 +402,8 @@ func (s *Server) runUpdate(id string, providers []string, maxNodes int, sub stri
 	}
 	rep, err := fetch.Update(fetch.Options{
 		Providers: providers, MaxNodes: maxNodes,
-		SubURL: sub, ModelsPath: s.modelsPath(), Log: logf})
+		SubURL: sub, ModelsPath: s.modelsPath(), Log: logf,
+		NodeCache: s.nodeCache})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j := s.jobs[id]
