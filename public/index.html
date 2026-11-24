@@ -61,6 +61,8 @@
     <button id="pfDel" class="danger">🗑</button>
     <button id="cfgExport">导出</button>
     <button id="cfgImport">导入</button>
+    <button id="demoLoad" title="补充载入演示档案（不动已有数据）">载入演示</button>
+    <button id="demoClear" class="danger" title="移除全部演示档案">清空演示</button>
     <input type="file" id="importFile" accept=".json" hidden>
   </div>
 </header>
@@ -217,9 +219,11 @@ const profile=()=>state.config.profiles.find(p=>p.id===state.config.activeProfil
 // ---------------- 渲染 ----------------
 function render(){renderProfiles();renderScenario();renderTab();persist();}
 
+const demoIds=()=>new Set((window.DEMO_CONFIG?.profiles||[]).map(p=>p.id));
 function renderProfiles(){
-  const sel=$('#pfSel');sel.innerHTML='';
-  for(const p of state.config.profiles)sel.append(h('option',{value:p.id,selected:p.id===state.config.activeProfileId},p.name));
+  const sel=$('#pfSel');sel.innerHTML='';const dids=demoIds();
+  for(const p of state.config.profiles)sel.append(h('option',{value:p.id,selected:p.id===state.config.activeProfileId},
+    p.name+(dids.has(p.id)?'·演示':'')));
 }
 function renderScenario(){
   const sc=profile().scenario;
@@ -669,6 +673,25 @@ function bindGlobal(){
   $('#cfgExport').onclick=()=>{const b=new Blob([JSON.stringify(state.config,null,2)],{type:'application/json'});
     const a=h('a',{href:URL.createObjectURL(b),download:'aipc-config.json'});a.click();};
   $('#cfgImport').onclick=()=>$('#importFile').click();
+  $('#demoLoad').onclick=()=>{
+    const dc=window.DEMO_CONFIG;if(!dc)return;
+    const have=new Set(state.config.profiles.map(p=>p.id));
+    let n=0;
+    for(const p of dc.profiles)if(!have.has(p.id)){state.config.profiles.push(JSON.parse(JSON.stringify(p)));n++;}
+    alert(n?`已载入 ${n} 个演示档案（下拉中带「·演示」标）`:'演示档案已全部存在');
+    render();
+  };
+  $('#demoClear').onclick=()=>{
+    const dids=demoIds();
+    const rm=state.config.profiles.filter(p=>dids.has(p.id));
+    if(!rm.length)return alert('没有演示档案');
+    if(!confirm(`移除 ${rm.length} 个演示档案：${rm.map(p=>p.name).join('、')}？`))return;
+    state.config.profiles=state.config.profiles.filter(p=>!dids.has(p.id));
+    if(!state.config.profiles.length)state.config.profiles.push(C.newProfile('默认配置'));
+    if(!state.config.profiles.some(p=>p.id===state.config.activeProfileId))
+      state.config.activeProfileId=state.config.profiles[0].id;
+    render();
+  };
   $('#importFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());
     const v=C.validateConfig(j);if(!v.ok)return alert('导入失败:\n'+v.errors.join('\n'));
     state.config=j;render();}catch(err){alert('解析失败: '+err.message);}};
