@@ -82,9 +82,15 @@ def _fx() -> dict:
 
 def _run_update(job_id: str, providers: list[str] | None, max_nodes: int):
     lines: list[str] = []
+
+    def prog(p: dict):
+        with _JOBS_LOCK:
+            _JOBS[job_id]["progress"] = p
+
     try:
         rep = fetcher.update(providers, max_nodes=max_nodes,
-                             log=lambda m: lines.append(str(m)))
+                             log=lambda m: lines.append(str(m)),
+                             progress=prog)
         status, err = "done", None
     except Exception as e:
         rep, status, err = None, "error", f"{type(e).__name__}: {e}"
@@ -230,7 +236,9 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             job_id = uuid.uuid4().hex[:8]
             with _JOBS_LOCK:
-                _JOBS[job_id] = {"status": "running", "report": None, "log": []}
+                _JOBS[job_id] = {"status": "running", "report": None, "log": [],
+                                 "progress": None,
+                                 "startedAt": int(time.time() * 1000)}
             threading.Thread(
                 target=_run_update,
                 args=(job_id, body.get("providers"), int(body.get("maxNodes", 25))),

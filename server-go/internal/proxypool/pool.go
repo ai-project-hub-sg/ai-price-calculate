@@ -194,8 +194,11 @@ type ProbeResult struct {
 }
 
 // FindWorking 按候选顺序探测节点，为每个目标 URL 找首个可用节点（4 并发批）。
+// onNodeStart 每个节点开测时回调（label, 全局序号, 总候选数）——供进度展示；
+// 4 个一并发，序号是"开测序"而非"完成序"。
 func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int, timeoutMS int,
 	validate func(key string, body []byte) bool,
+	onNodeStart func(label string, idx, total int),
 	onProgress func(tested int, pending []string)) ProbeResult {
 	if maxNodes > 0 && len(nodes) > maxNodes {
 		nodes = nodes[:maxNodes]
@@ -221,6 +224,9 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 		reps := make([]ProbeReport, len(batch))
 		var wg sync.WaitGroup
 		for j, n := range batch {
+			if onNodeStart != nil {
+				onNodeStart(n.Label(), i+j+1, len(nodes))
+			}
 			wg.Add(1)
 			go func(j int, n Node) {
 				defer wg.Done()

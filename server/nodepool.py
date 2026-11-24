@@ -321,10 +321,15 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                 _cache_mark(n, False, err="全部目标无响应")
 
     # 温路径：缓存可用节点按候选序逐个「抓+校验」待解目标
-    for n in _cache_usable(nodes):
+    warm = _cache_usable(nodes)
+    for wi, n in enumerate(warm):
         if not pending:
             break
         tried.add(n.index_id)
+        if on_progress:
+            on_progress({"phase": "warm", "node": n.label, "idx": wi + 1,
+                         "total": len(warm), "tested": len(report),
+                         "pending": list(pending)})
         try:
             absorb(probe_node(n, dict(pending), timeout, validate), n)
         except Exception as e:
@@ -339,6 +344,11 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
             break
         batch = rest[i:i + workers]
         snapshot = dict(pending)
+        if on_progress:
+            for j, n in enumerate(batch):  # 节点开测事件（并发批，序号=开测序）
+                on_progress({"phase": "probe", "node": n.label, "idx": i + j + 1,
+                             "total": len(rest), "tested": len(report),
+                             "pending": list(pending)})
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futs = {ex.submit(probe_node, n, snapshot, timeout, validate): n
                     for n in batch}
@@ -352,6 +362,9 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
         if on_progress:
             on_progress({"tested": len(report), "pending": list(pending)})
     return {"winners": winners, "report": report, "pending": list(pending)}
+
+# on_progress 两种事件：{"phase","node","idx","total",...}=节点开测；
+# {"tested","pending"}=批次完成。调用方据此驱动日志与进度 UI。
 
 
 def test_nodes(nodes: list[Node], max_nodes: int = 25, workers: int = 4,

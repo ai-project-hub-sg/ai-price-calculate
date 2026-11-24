@@ -12,6 +12,19 @@ import (
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/proxypool"
 )
 
+// Progress 结构化进度（job.progress 下发前端）：阶段/当前项/序号/待解数/
+// 当前项开始时间——前端据此渲染"在测哪个厂家/哪个节点/还剩多少/本项耗时"。
+type Progress struct {
+	Phase     string `json:"phase"`              // direct|sub|warm|probe|merge
+	Item      string `json:"item,omitempty"`     // 价目源 id 或节点 label
+	ItemIndex int    `json:"itemIndex,omitempty"`
+	ItemTotal int    `json:"itemTotal,omitempty"`
+	Done      int    `json:"done"`               // 已解决价目源数
+	Total     int    `json:"total"`              // 价目源总数
+	Pending   int    `json:"pending,omitempty"`  // 节点阶段待解目标数
+	StartedAt int64  `json:"startedAt"`          // 当前项开始 epoch ms（前端算本项耗时）
+}
+
 type Options struct {
 	Providers  []string // 空 = 全部源
 	MaxNodes   int      // 探测节点上限，默认 25
@@ -20,6 +33,7 @@ type Options struct {
 	DryRun     bool
 	Log        func(string)
 	NodeCache  *proxypool.Cache // 非nil启用节点可用性缓存（温路径复用）
+	Progress   func(Progress)   // 非nil接收结构化进度事件
 }
 
 // minPricingBytes 判定"页面真实抓到"的最小字节数——Kimi 等 JS 渲染页
@@ -45,6 +59,12 @@ func Update(o Options) (map[string]any, error) {
 	if o.SubURL != "" {
 		subDesc = "直连失败 → 代理订阅节点池重试"
 	}
+	emit := func(p Progress) {
+		p.StartedAt = time.Now().UnixMilli()
+		if o.Progress != nil {
+			o.Progress(p)
+		}
+	}
 	log(fmt.Sprintf("更新 %d 个源：%s", len(targets), subDesc))
 	dataset, err := LoadDataset(o.ModelsPath)
 	if err != nil {
@@ -57,7 +77,7 @@ func Update(o Options) (map[string]any, error) {
 	fetched := map[string]string{}
 	needProxy := map[string]string{}
 
-	for _, pid := range targets {
+	for i, pid := range targets {
 		src, ok := Sources[pid]
 		if !ok { // 显式报告未知源，不静默跳过
 			provs[pid] = map[string]any{"via": "none", "status": 0,
@@ -65,6 +85,8 @@ func Update(o Options) (map[string]any, error) {
 			log(fmt.Sprintf("[%s] 未知 provider id，跳过", pid))
 			continue
 		}
+		emit(Progress{Phase: "direct", Item: pid, ItemIndex: i + 1,
+			ItemTotal: len(targets), Done: len(fetched), Total: len(targets)})
 		r := proxypool.FetchURL(src.URL, 0, 12_000)
 		pr := map[string]any{"via": "direct", "status": r.Status}
 		if r.Status == 200 && r.Bytes > minPricingBytes {
@@ -112,6 +134,8 @@ func Update(o Options) (map[string]any, error) {
 				}
 			}
 			if len(nodes) == 0 {
+				emit(Progress{Phase: "sub", Done: len(fetched), Total: len(targets),
+					Pending: len(needProxy)})
 				loaded, lerr := proxypool.LoadSubscription(o.SubURL, log)
 				if lerr == nil {
 					nodes = loaded
@@ -150,10 +174,13 @@ func Update(o Options) (map[string]any, error) {
 				if o.NodeCache != nil {
 					if usable := o.NodeCache.Usable(o.SubURL, nodes); len(usable) > 0 {
 						log(fmt.Sprintf("节点缓存命中：%d 个近期可用节点直接复用", len(usable)))
-						for _, n := range usable {
+						for i, n := range usable {
 							if len(needProxy) == 0 {
 								break
 							}
+							emit(Progress{Phase: "warm", Item: n.Label(), ItemIndex: i + 1,
+								ItemTotal: len(usable), Done: len(targets) - len(needProxy),
+								Total: len(targets), Pending: len(needProxy)})
 							probed[proxypool.Key(n)] = true
 							lb, lerr := proxypool.StartNode(n)
 							if lerr != nil {
@@ -186,8 +213,15 @@ func Update(o Options) (map[string]any, error) {
 					}
 					log(fmt.Sprintf("节点池探测 %d 个目标（候选节点 %d 个，上限 %d）…",
 						len(needProxy), len(rest), maxNodes))
+					pendingNow := len(needProxy) // onNodeStart 时 pending 未知，用最近一次批次值
 					probe := proxypool.FindWorking(rest, needProxy, maxNodes, 4, 8_000, validate,
+						func(label string, idx, total int) {
+							emit(Progress{Phase: "probe", Item: label, ItemIndex: idx,
+								ItemTotal: total, Done: len(targets) - pendingNow,
+								Total: len(targets), Pending: pendingNow})
+						},
 						func(tested int, pending []string) {
+							pendingNow = len(pending)
 							log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
 						})
 					if o.NodeCache != nil {
@@ -251,6 +285,7 @@ func Update(o Options) (map[string]any, error) {
 	}
 
 	if len(changed) > 0 && !o.DryRun {
+		emit(Progress{Phase: "merge", Done: len(targets), Total: len(targets)})
 		// 对齐 Python：备份失败则中止，禁止无备份覆盖
 		if bak, err := os.ReadFile(o.ModelsPath); err != nil {
 			return nil, fmt.Errorf("读 models.json 备份源失败: %w", err)

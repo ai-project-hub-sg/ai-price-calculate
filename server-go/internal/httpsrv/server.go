@@ -49,10 +49,12 @@ func (w *statusWriter) WriteHeader(code int) {
 }
 
 type job struct {
-	Status string   `json:"status"`
-	Report any      `json:"report"`
-	Log    []string `json:"log"`
-	Error  string   `json:"error,omitempty"`
+	Status    string         `json:"status"`
+	Report    any            `json:"report"`
+	Log       []string       `json:"log"`
+	Error     string         `json:"error,omitempty"`
+	Progress  fetch.Progress `json:"progress,omitempty"`
+	StartedAt int64          `json:"startedAt"` // job 创建 epoch ms，前端算总耗时
 }
 
 type Server struct {
@@ -411,7 +413,7 @@ func (s *Server) hUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	sub, subErr := s.subURL()
 	id := randID()
-	j := &job{Status: "running"}
+	j := &job{Status: "running", StartedAt: time.Now().UnixMilli()}
 	s.mu.Lock()
 	s.jobs[id] = j
 	s.mu.Unlock()
@@ -435,7 +437,12 @@ func (s *Server) runUpdate(id string, providers []string, maxNodes int, sub stri
 	rep, err := fetch.Update(fetch.Options{
 		Providers: providers, MaxNodes: maxNodes,
 		SubURL: sub, ModelsPath: s.modelsPath(), Log: logf,
-		NodeCache: s.nodeCache})
+		NodeCache: s.nodeCache,
+		Progress: func(p fetch.Progress) {
+			s.mu.Lock()
+			s.jobs[id].Progress = p
+			s.mu.Unlock()
+		}})
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	j := s.jobs[id]

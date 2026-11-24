@@ -970,10 +970,31 @@ function bindGlobal(){
       const poll=setInterval(async()=>{
         try{
           const j=await(await fetch('/api/jobs/'+jobId)).json();
-          if(j.status==='running'){const last=(j.log||[]).slice(-1)[0];
-            box.lastChild&&box.lastChild.textContent.startsWith('运行中')?box.lastChild.remove():0;
-            log(`运行中… ${((Date.now()-t0)/1000).toFixed(0)}s`+(last?` · ${last}`:''));return;}
+          if(j.status==='running'){
+            const p=j.progress||{};
+            const totalS=((Date.now()-(j.startedAt||t0))/1000)|0;
+            const PHASE={direct:'直连抓取',sub:'订阅拉取',warm:'缓存节点复用',probe:'节点池探测',merge:'合并写回'};
+            let prog=box.querySelector('.prog');
+            if(!prog){prog=h('div',{class:'sub prog',
+              style:'border:1px solid #ddd;background:#fafafa;padding:4px 8px;margin:2px 0'});
+              box.prepend(prog);}
+            prog.innerHTML='';
+            prog.append(h('div',{},`⟳ 更新中 · 总耗时 ${totalS}s`+
+              (p.total?` · 价目 ${p.done||0}/${p.total}`:'')));
+            if(p.total){const pct=Math.round(100*(p.done||0)/p.total);
+              prog.append(h('div',{style:'height:4px;background:#eee;margin:3px 0'},
+                h('div',{style:`width:${pct}%;height:100%;background:#3b82f6`})));}
+            if(p.phase){
+              const idx=p.itemIndex?`（${p.itemIndex}/${p.itemTotal}）`:'';
+              const pend=(p.phase==='warm'||p.phase==='probe')&&p.pending!=null?` · 待解 ${p.pending}`:'';
+              const itemS=p.startedAt?(((Date.now()-p.startedAt)/1000)|0):0;
+              prog.append(h('div',{},
+                `▶ ${PHASE[p.phase]||p.phase}${p.item?' '+p.item:''}${idx}${pend} · 本项 ${itemS}s`));}
+            const last=(j.log||[]).slice(-1)[0];
+            if(last)prog.append(h('div',{style:'opacity:.7'},'最近: '+last));
+            return;}
           clearInterval(poll);done();
+          box.querySelector('.prog')?.remove();
           if(j.status==='done'){
             const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
             log('✓ 更新完成');
