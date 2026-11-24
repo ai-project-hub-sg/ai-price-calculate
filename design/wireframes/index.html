@@ -75,30 +75,17 @@
 
   <section id="t-result">
     <div class="hint">
-      <span class="viewsw">视图: <label><input type="radio" name="v" checked> 矩阵(当前档案)</label>
-      <label><input type="radio" name="v"> 汇总(全部档案)</label></span>
-      厂商:[全部▾] 系列:[全部▾] 搜索[____] 状态:[active▾]
-      <br>每格两行：<b>上=不换汇（模型官方币种）</b>，<b>下=换汇（恒 ¥人民币）</b>；范围外=—
+      筛选: 配置[全部▾] 站[全部▾] 提供商[全部▾] 厂商[全部▾] 系列[全部▾] 搜索[____]　共 214 行
+      <br>行=配置×站×提供商×范围内模型；<b>不换汇</b>=模型官方币种原值，<b>换汇</b>=恒¥（点列头排序即最便宜组合），<b>官方</b>=同模型官方¥基准
     </div>
     <table>
-      <tr><th>模型</th><th>官方价</th><th>示例站A/主商 ↕</th><th>示例站A/批发商</th><th>便宜站B/默认</th></tr>
-      <tr><td>Claude Sonnet 5.5<br><small>档≤1M</small></td>
-          <td>$2.11<br><small>¥14.98 · 官方</small></td>
-          <td>$1.69<br><small>¥11.98 · 折0.8</small></td>
-          <td class="dim">— <small>范围外</small></td>
-          <td>$1.48<br><small>¥10.49 · 折0.7</small></td></tr>
-      <tr><td>GPT-6.2 Astra<br><small>档&gt;272K</small></td>
-          <td>$8.51<br><small>¥60.42 · 官方</small></td>
-          <td>$6.81<br><small>¥48.33 · 自定档✎</small></td>
-          <td>$5.96<br><small>¥42.31 · 折0.7</small></td>
-          <td class="dim">—</td></tr>
-      <tr><td>Kimi K3 <small>· CNY计价</small></td>
-          <td>¥48.00<br><small>¥48.00 · 官方</small></td>
-          <td>¥33.60<br><small>¥33.60 · 折0.7</small></td>
-          <td class="dim">—</td>
-          <td>¥38.40<br><small>¥38.40 · 折0.8</small></td></tr>
+      <tr><th>配置</th><th>站</th><th>提供商</th><th>厂商</th><th>系列</th><th>模型</th><th>档位</th><th>折扣</th><th>不换汇 ↕</th><th>换汇(¥) ↓</th><th>官方(¥)</th></tr>
+      <tr><td>低价对比</td><td>便宜站B</td><td>默认商</td><td>google</td><td>g-flash</td><td>3.8-flash</td><td>—</td><td>0.6</td><td>$0.45</td><td>¥3.19</td><td>¥5.33</td></tr>
+      <tr><td>主力测算</td><td>示例站A</td><td>批发上游</td><td>anthropic</td><td>sonnet</td><td>sonnet-5.5</td><td>≤1M</td><td>0.7</td><td>$1.69</td><td>¥11.98</td><td>¥14.98</td></tr>
+      <tr><td>低价对比</td><td>便宜站B</td><td>默认商</td><td>deepseek</td><td>v4</td><td>v4-pro</td><td>—</td><td>0.7</td><td>$2.30</td><td>¥15.37</td><td>¥21.96</td></tr>
+      <tr><td>主力测算</td><td>便宜站B</td><td>默认商</td><td>moonshot</td><td>kimi-k3</td><td>kimi-k3</td><td>—</td><td>0.8</td><td>¥29.50</td><td>¥29.50</td><td>¥36.88</td></tr>
+      <tr><td>主力测算</td><td>示例站A</td><td>主商</td><td>openai</td><td>gpt-6.x</td><td>gpt-6.2-astra</td><td>&gt;272K</td><td>0.6✎</td><td>$8.51</td><td>¥60.42</td><td>¥60.42</td></tr>
     </table>
-    <div class="hint">汇总视图（切换后）：行=配置×站×提供商×范围内模型；列含 配置/站/提供商/厂商/系列/模型/不换汇↕/换汇(¥)↓ + 四筛选器。</div>
   </section>
 
   <section id="t-stations" hidden>
