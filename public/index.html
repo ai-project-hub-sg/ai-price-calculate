@@ -64,6 +64,7 @@
     <button id="cfgImport">导入</button>
     <button id="demoLoad" title="补充载入演示档案（不动已有数据）">载入演示</button>
     <button id="demoClear" class="danger" title="移除全部演示档案">清空演示</button>
+    <button id="srvDown" class="danger" title="关闭本地后端服务">⏻ 关闭服务</button>
     <input type="file" id="importFile" accept=".json" hidden>
   </div>
 </header>
@@ -1030,6 +1031,14 @@ function bindGlobal(){
     }catch(e){done();log('✗ 请求失败: '+e.message);}
   };
 }
+$('#srvDown').onclick=async()=>{
+  if(!confirm('关闭本地后端服务？页面将无法再请求 API，需手动重启服务。'))return;
+  try{await fetch('/api/shutdown',{method:'POST'});}catch(e){/* 服务先死也算关了 */}
+  document.body.innerHTML='<div style="max-width:600px;margin:80px auto;text-align:center;font-family:inherit">'+
+    '<h2 style="color:#166534">✓ 后端已关闭</h2>'+
+    '<p class="dim">aipc-server / python -m server.app 已停止，本页可安全关闭。</p>'+
+    '<p class="dim">重启：运行 aipc-server.exe 或 python -m server.app --port 8787</p></div>';
+};
 boot();
 </script>
 </body>

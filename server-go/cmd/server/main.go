@@ -7,11 +7,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/assets"
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/httpsrv"
@@ -36,11 +38,17 @@ func main() {
 	}
 	srv := httpsrv.New(*data, publicDir, assets.Public)
 	addr := fmt.Sprintf("%s:%d", *host, *port)
+	httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
+	srv.ShutdownFn = func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		httpSrv.Shutdown(ctx)
+	}
 	fmt.Printf("AI 价格归一化计算器 → http://%s\n", addr)
 	fmt.Printf("数据目录 %s · 前端来源 %s\n", *data, mode)
 	fmt.Println("接口: /api/models /api/config /api/fx /api/nodes " +
-		"/api/pricing/update /api/jobs/<id>")
-	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+		"/api/pricing/update /api/jobs/<id> /api/shutdown")
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		fmt.Fprintln(os.Stderr, "服务退出:", err)
 		os.Exit(1)
 	}

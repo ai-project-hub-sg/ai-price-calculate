@@ -64,6 +64,8 @@ type Server struct {
 
 	nodeCache *proxypool.Cache // 「测试节点」与「价目更新」共享的可用性缓存
 
+	ShutdownFn func() // POST /api/shutdown 调用，main 注入优雅停机
+
 	mu   sync.Mutex
 	jobs map[string]*job
 }
@@ -101,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/nodes", s.hNodes)
 	mux.HandleFunc("POST /api/nodes/test", s.hNodesTest)
 	mux.HandleFunc("POST /api/pricing/update", s.hUpdate)
+	mux.HandleFunc("POST /api/shutdown", s.hShutdown)
 	mux.HandleFunc("GET /api/jobs/", s.hJob)
 	mux.HandleFunc("OPTIONS /", s.hOptions)
 	mux.HandleFunc("GET /", s.hStatic)
@@ -463,6 +466,18 @@ func (s *Server) hJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, j)
+}
+
+// hShutdown 关闭后端（前端「关闭服务」按钮）。先回响应再延时停机，
+// 保证前端能拿到确认。
+func (s *Server) hShutdown(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"ok": true, "shutdown": true})
+	if s.ShutdownFn != nil {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			s.ShutdownFn()
+		}()
+	}
 }
 
 func (s *Server) hOptions(w http.ResponseWriter, r *http.Request) {

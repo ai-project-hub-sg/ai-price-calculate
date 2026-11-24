@@ -22,7 +22,7 @@
 
 两实现必须**行为等价**的契约面（不等价即 bug，须有测试或文档解释）：
 
-1. **HTTP 端点集合与响应形状**：`/api/models` `/api/config`(GET/PUT) `/api/fx` `/api/nodes` `/api/nodes/test`(POST) `/api/pricing/update` `/api/jobs/<id>`；错误 `{error: "..."}` 字段名一致。job 对象含 `progress`（结构化进度：phase/item/itemIndex/itemTotal/targets/done/current/startedAt——`done`=已解决厂家 id 列表，`current`=在飞厂家 id 集合）与 `startedAt`（job 创建 epoch ms）——两边都产出，前端进度卡依赖此契约。
+1. **HTTP 端点集合与响应形状**：`/api/models` `/api/config`(GET/PUT) `/api/fx` `/api/nodes` `/api/nodes/test`(POST) `/api/pricing/update` `/api/jobs/<id>` `/api/shutdown`(POST)；错误 `{error: "..."}` 字段名一致。job 对象含 `progress`（结构化进度：phase/item/itemIndex/itemTotal/targets/done/current/startedAt——`done`=已解决厂家 id 列表，`current`=在飞厂家 id 集合）与 `startedAt`（job 创建 epoch ms）——两边都产出，前端进度卡依赖此契约。
 2. **价目解析**：每个 SOURCES 源对同一 .md 输入产出相同行集（id/status/contextWindow/tiers/notes/officialUpdatedAt）。
 3. **合并语义**：updated/added/skippedRetired/missingInSource 四列表含义与空值形状（`[]` 不是 `null`）；`retired` 不入库；新增行补 `status=active`/`fetchedAt`/`officialUpdatedAt=null`/`notes=自动更新新增，请人工核对`；`checkedAt` 必写。
 4. **models.json 写回**：缩进 2 空格、UTF-8 原文不转义、数字十进制无科学计数法、保留文件换行风格、**未动数据零 diff**。

@@ -255,6 +255,11 @@ class Handler(BaseHTTPRequestHandler):
                       int(body.get("maxNodes", 25))),
                 daemon=True).start()
             self._json({"jobId": job_id})
+        elif path == "/api/shutdown":
+            # 前端「关闭服务」按钮：先回响应再延时停机（shutdown 必须在
+            # serve_forever 之外的线程调用）
+            self._json({"ok": True, "shutdown": True})
+            threading.Timer(0.3, self.server.shutdown).start()
         else:
             self._send(404, b"not found", "text/plain")
 
