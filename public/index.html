@@ -230,20 +230,36 @@ function renderTab(){
 }
 
 // ---------- 结果表 ----------
-const FILTERS=[['profileId','配置'],['stationId','站'],['providerId','提供商'],['vendorId','厂商'],['series','系列']];
+// [行字段, 标签, 显示名字段]；筛选值为 Set（空=全部），选项随其他筛选联动
+const FILTERS=[['profileId','配置','profileName'],['stationId','站','stationName'],['providerId','提供商','providerName'],['vendorId','厂商','vendorName'],['series','系列','series']];
 function renderResult(){
   const rows=C.summaryRows(state.config.profiles,state.dataset,state.rate);
+  const f=state.filters, q=(f.q||'').toLowerCase();
+  const pass=(r,except)=>FILTERS.every(([k])=>k===except||!f[k]||!f[k].size||f[k].has(r[k]))
+    &&(!q||r.modelId.toLowerCase().includes(q)||(r.modelName||'').toLowerCase().includes(q));
   const bar=$('#filters');bar.innerHTML='';
-  for(const [k,label] of FILTERS){
-    const vals=[...new Set(rows.map(r=>k==='profileId'?r.profileName:k==='stationId'?r.stationName:k==='providerId'?r.providerName:k==='vendorId'?r.vendorName:r[k]))].sort();
-    const sel=h('select',{},h('option',{value:''},label+':全部'),...vals.map(v=>h('option',{value:v,selected:state.filters[k]===v},v)));
-    sel.onchange=()=>{state.filters[k]=sel.value||null;renderResult();};
-    bar.append(sel);
+  for(const [k,label,nk] of FILTERS){
+    const set=f[k]||(f[k]=new Set());
+    const opts=new Map(); // 选项 = 除本筛选外其余条件下仍可见的值（联动）
+    for(const r of rows) if(pass(r,k)) opts.set(r[k],r[nk]);
+    for(const v of [...set]) if(!opts.has(v)) set.delete(v);
+    const sorted=[...opts.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'zh'));
+    const btn=h('button',{},`${label}:${set.size===0?'全部':set.size===1?[...set].map(v=>opts.get(v))[0]:set.size+'项'} ▾`);
+    btn.onclick=e=>{e.stopPropagation();state.openFilter=state.openFilter===k?null:k;renderResult();};
+    const pop=h('div',{class:'pop',style:'display:'+(state.openFilter===k?'block':'none')});
+    pop.append(h('div',{style:'margin-bottom:4px'},
+      h('button',{onclick:e=>{e.stopPropagation();set.clear();renderResult();}},'清空'),
+      h('button',{onclick:e=>{e.stopPropagation();sorted.forEach(([v])=>set.add(v));renderResult();}},'全选')));
+    for(const [v,name] of sorted){
+      const cb=h('input',{type:'checkbox',checked:set.has(v)});
+      cb.onchange=()=>{cb.checked?set.add(v):set.delete(v);renderResult();};
+      pop.append(h('label',{},cb,' '+name));
+    }
+    bar.append(h('span',{class:'fdrop',style:'position:relative;display:inline-block'},btn,pop));
   }
-  const search=h('input',{type:'text',placeholder:'搜索模型',value:state.filters.q||''});
-  search.oninput=()=>{state.filters.q=search.value;renderResult();};bar.append(search);
-  const f=state.filters;
-  const shown=rows.filter(r=>(!f.profileId||r.profileName===f.profileId)&&(!f.stationId||r.stationName===f.stationId)&&(!f.providerId||r.providerName===f.providerId)&&(!f.vendorId||r.vendorName===f.vendorId)&&(!f.series||r.series===f.series)&&(!f.q||r.modelId.includes(f.q.toLowerCase())));
+  const search=h('input',{type:'text',placeholder:'搜索模型',value:f.q||''});
+  search.oninput=()=>{f.q=search.value;renderResult();};bar.append(search);
+  const shown=rows.filter(r=>pass(r));
   $('#rowCount').textContent=`共 ${shown.length} 行（全部档案合计 ${rows.length}）`;
   const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny','官方(¥)']];
   const t=$('#resultTable');t.innerHTML='';
@@ -513,6 +529,7 @@ function renderRecon(){
 // ---------- 事件绑定 ----------
 function bindGlobal(){
   $('#tabs').onclick=e=>{if(e.target.dataset.t){state.tab=e.target.dataset.t;render();}};
+  document.addEventListener('click',e=>{if(state.openFilter&&!e.target.closest('.fdrop')){state.openFilter=null;if(state.tab==='result')renderResult();}});
   $('#pfSel').onchange=e=>{state.config.activeProfileId=e.target.value;$('#estProv').dataset.init='';$('#estProv').innerHTML='';render();};
   $('#pfNew').onclick=()=>{const n=prompt('新档案名','新配置');if(!n)return;const p=C.newProfile(n);state.config.profiles.push(p);state.config.activeProfileId=p.id;render();};
   $('#pfClone').onclick=()=>{const c=C.cloneNode(profile(),'profile');state.config.profiles.push(c);state.config.activeProfileId=c.id;render();};
