@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>AI 价格归一化计算器</title>
+<style>
+  *{box-sizing:border-box;margin:0;font-family:system-ui,"Microsoft YaHei",sans-serif}
+  body{background:#f5f5f4;color:#292524;font-size:13px}
+  header,.bar,.tabs,main{max-width:1400px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#1c1917;color:#fafaf9}
+  header h1{font-size:15px;font-weight:600}
+  button{font:inherit;padding:3px 10px;border:1px solid #a8a29e;border-radius:4px;background:#fff;cursor:pointer}
+  button:hover{background:#f5f5f4}button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+  button.danger{color:#b91c1c}button:disabled{opacity:.4;cursor:not-allowed}
+  select,input[type=text],input[type=number]{font:inherit;padding:3px 6px;border:1px solid #a8a29e;border-radius:4px;background:#fff}
+  .profiles{display:flex;gap:6px;align-items:center}
+  .bar{display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:8px 16px;background:#e7e5e4;border-bottom:1px solid #d6d3d1}
+  .bar label{display:flex;gap:4px;align-items:center;white-space:nowrap}
+  .bar input[type=number],.bar input[type=text]{width:70px}
+  .sub{color:#78716c;font-size:11px}
+  .tabs{display:flex;gap:2px;padding:8px 16px 0}
+  .tabs button{border-radius:6px 6px 0 0;border-bottom:none;padding:6px 18px}
+  .tabs button.on{background:#fff;font-weight:600}
+  main{background:#fff;border:1px solid #d6d3d1;border-top:none;min-height:560px;padding:14px 16px;position:relative}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #e7e5e4;padding:5px 8px;text-align:left;white-space:nowrap}
+  th{background:#fafaf9;cursor:pointer;user-select:none}
+  th.no-sort{cursor:default}
+  tr:hover td{background:#fafaf9}
+  .dim{color:#a8a29e}.hint{color:#78716c;font-size:12px;margin:6px 0}
+  .banner{background:#fef3c7;border:1px solid #fbbf24;padding:6px 12px;margin-bottom:10px;border-radius:4px}
+  .node{border:1px solid #e7e5e4;border-radius:6px;padding:7px 12px;margin:5px 0}
+  .node.lvl2{margin-left:26px;background:#fafaf9}.node.lvl3{margin-left:52px;background:#f5f5f4}
+  .node .ops{float:right}.node .ops button{margin-left:4px}
+  .off{opacity:.55}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:460px;max-width:95vw;background:#fff;border-left:2px solid #57534e;padding:16px;box-shadow:-8px 0 30px #0003;z-index:20;overflow-y:auto}
+  .drawer h3{font-size:14px;margin-bottom:10px}
+  .drawer .row{margin:8px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .drawer .row>span:first-child{width:88px;color:#57534e;flex:none}
+  .box{border:1px dashed #a8a29e;border-radius:6px;padding:8px;margin:8px 0}
+  .chip{display:inline-block;border:1px solid #d6d3d1;border-radius:10px;padding:1px 8px;margin:0 4px 4px 0;background:#fff;cursor:pointer;user-select:none}
+  .chip.on{background:#dbeafe;border-color:#93c5fd}
+  .foot{text-align:right;margin-top:12px;position:sticky;bottom:0;background:#fff;padding-top:8px}
+  .empty{text-align:center;color:#78716c;padding:60px 0}
+  .src-official{color:#78716c}.src-discount{color:#2563eb}.src-custom{color:#d97706}
+  .pop{position:absolute;background:#fff;border:1px solid #a8a29e;border-radius:6px;box-shadow:0 4px 16px #0002;padding:8px;z-index:15;max-height:260px;overflow-y:auto;min-width:170px}
+  .pop label{display:block;padding:2px 4px;white-space:nowrap;cursor:pointer}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+  .toolbar select{min-width:110px}
+  mark{background:#fef08a}
+</style>
+</head>
+<body>
+<header>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.1</small></h1>
+  <div class="profiles">
+    档案 <select id="pfSel"></select>
+    <button id="pfNew" class="primary">＋新建</button>
+    <button id="pfClone">⧉复制</button>
+    <button id="pfRename">✎</button>
+    <button id="pfDel" class="danger">🗑</button>
+    <button id="cfgExport">导出</button>
+    <button id="cfgImport">导入</button>
+    <input type="file" id="importFile" accept=".json" hidden>
+  </div>
+</header>
+<div class="bar">
+  <label>promptTokens <input type="number" id="scPrompt" min="0" step="1000"></label>
+  <label>配比 输入<input type="number" id="mixI" min="0" step="0.1">% 缓存读<input type="number" id="mixC" min="0" step="0.1">% 输出<input type="number" id="mixO" min="0" step="0.1">%</label>
+  <span class="sub" id="mixNorm"></span>
+  <label>预设 <select id="presetSel"><option value="">—</option></select>
+    <button id="presetSave" title="保存当前配比为预设">存</button></label>
+  <label><input type="checkbox" id="scOffPeak"> 非高峰</label>
+  <label><input type="checkbox" id="scTiered" checked> 分档计价<small class="sub">(账户级)</small></label>
+  <label>汇率 <select id="fxMode"><option value="auto">自动</option><option value="manual">手动</option></select>
+    <input type="number" id="fxVal" step="0.01" style="width:70px">
+    <button id="fxRefresh" title="重新获取">⟳</button>
+    <span class="sub" id="fxInfo"></span></label>
+</div>
+<div class="tabs" id="tabs">
+  <button class="on" data-t="result">结果表</button>
+  <button data-t="stations">中转站管理</button>
+  <button data-t="official">官方价目</button>
+  <button data-t="estimate">单次估算</button>
+</div>
+<main>
+  <div class="banner" id="banner" hidden></div>
+
+  <section id="t-result">
+    <div class="toolbar" id="filters"></div>
+    <div class="hint" id="rowCount"></div>
+    <div style="overflow-x:auto"><table id="resultTable"></table></div>
+  </section>
+
+  <section id="t-stations" hidden>
+    <button class="primary" id="stNew">＋新建站点</button>
+    <span class="hint">站点自动生成同名默认提供商；范围=空即全量</span>
+    <div id="stTree"></div>
+  </section>
+
+  <section id="t-official" hidden>
+    <div class="toolbar">
+      <button class="primary" id="updBtn">⟳ 一键更新官方价目</button>
+      <span class="hint" id="updInfo"></span>
+      <input type="text" id="offSearch" placeholder="搜索模型" style="margin-left:auto">
+    </div>
+    <div style="overflow-x:auto"><table id="offTable"></table></div>
+  </section>
+
+  <section id="t-estimate" hidden>
+    <div class="toolbar">
+      <label>提供商 <select id="estProv"></select></label>
+      <label>模型 <select id="estModel"></select></label>
+    </div>
+    <div class="toolbar">
+      <label>未命中输入 <input type="number" id="estI" value="20000"></label>
+      <label>缓存读 <input type="number" id="estC" value="8000"></label>
+      <label>输出 <input type="number" id="estO" value="4000"></label>
+      <b id="estOut"></b>
+    </div>
+    <div class="hint" id="estHint"></div>
+  </section>
+
+  <div class="drawer" id="drawer" hidden></div>
+</main>
+<script src="calc.js"></script>
+<script>
+"use strict";
+const C = window.Calc, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const h = (tag, attrs, ...kids) => { const e = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs||{})) {
+    if (k==='class') e.className=v; else if (k.startsWith('on')) e[k]=v;
+    else if (k==='html') e.innerHTML=v; else e.setAttribute(k,v); }
+  for (const k of kids.flat()) e.append(k?.nodeType?k:document.createTextNode(k??'')); return e; };
+const fmt = (n,cur) => n==null?'—':(cur==='USD'?'$':'¥')+(+n).toPrecision(4).replace(/\.?0+$/,'');
+const fmtC = n => n==null?'—':'¥'+(+n).toFixed(2);
+const esc = s => String(s??'');
+
+// ---------------- 状态 ----------------
+const LS_CFG='aipc.config', LS_KEY='aipc.models';
+let state = { config:null, dataset:null, rate:7.10, rateInfo:'手动兜底', backend:false,
+              tab:'result', sort:{key:'priceCny',dir:1}, filters:{}, editing:null };
+
+// file:// 兜底小数据集（后端在时会被 /api/models 全量替换）
+const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
+ {id:'anthropic',name:'Anthropic',currency:'USD',source:'',checkedAt:'',models:[
+  {id:'claude-sonnet-5-5',name:'Claude Sonnet 5.5',status:'active',tiers:[{upToTokens:null,input:2,output:10,cacheRead:0.10}]},
+  {id:'claude-haiku-5-5',name:'Claude Haiku 5.5',status:'active',tiers:[{upToTokens:100000,input:0.10,output:0.50,cacheRead:0.01},{upToTokens:null,input:0.50,output:2.50,cacheRead:0.05}]}]},
+ {id:'openai',name:'OpenAI',currency:'USD',source:'',checkedAt:'',models:[
+  {id:'gpt-6.2-astra',name:'GPT-6.2 Astra',status:'active',tiers:[{upToTokens:272000,input:8,output:40,cacheRead:0.40},{upToTokens:null,input:16,output:60,cacheRead:0.80}]},
+  {id:'gpt-5.4-mini',name:'GPT-5.4 Mini',status:'active',tiers:[{upToTokens:null,input:0.75,output:4.5,cacheRead:0.075}]}]},
+ {id:'moonshot',name:'Moonshot Kimi',currency:'CNY',source:'',checkedAt:'',models:[
+  {id:'kimi-k3',name:'Kimi K3',status:'active',tiers:[{upToTokens:null,input:20,output:100,cacheRead:2}]}]},
+ {id:'deepseek',name:'DeepSeek',currency:'USD',source:'',checkedAt:'',models:[
+  {id:'deepseek-v4-pro',name:'DeepSeek V4 Pro',status:'active',offPeakRatio:0.5,tiers:[{upToTokens:null,input:1.32,output:3.96,cacheRead:0.044}]}]}]};
+
+async function boot(){
+  try { const d=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(d) state.dataset=d; } catch(e){}
+  try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles) state.config=c; } catch(e){}
+  try {
+    const [m,c]=await Promise.all([fetch('/api/models'),fetch('/api/config')]);
+    if(m.ok){state.dataset=await m.json();state.backend=true;localStorage.setItem(LS_KEY,JSON.stringify(state.dataset));}
+    if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
+  } catch(e){}
+  if(!state.dataset) state.dataset=FALLBACK_DATA;
+  if(!state.config) state.config=C.defaultConfig();
+  if(!state.backend) showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
+  await loadFx();
+  bindGlobal(); render();
+}
+function showBanner(t){const b=$('#banner');b.textContent=t;b.hidden=false;}
+
+// ---------------- 持久化 ----------------
+let saveT=null;
+function persist(){
+  localStorage.setItem(LS_CFG,JSON.stringify(state.config));
+  clearTimeout(saveT);
+  if(state.backend) saveT=setTimeout(()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(state.config)}).catch(()=>{}),400);
+}
+async function loadFx(){
+  const pf=profile();
+  if(pf.exchangeRate.mode==='manual'){state.rate=+pf.exchangeRate.manualValue||7.10;state.rateInfo='手动';return;}
+  try{const r=await fetch('/api/fx');if(!r.ok)throw 0;const j=await r.json();
+    state.rate=j.rate;state.rateInfo=`${j.source.includes('er-api')?'er-api':'源'} ${j.fetchedAt||''}`.slice(0,28);
+    pf.exchangeRate.auto={value:j.rate,source:j.source,fetchedAt:j.fetchedAt};
+  }catch(e){state.rateInfo='获取失败·用上次/手动值';}
+}
+const profile=()=>state.config.profiles.find(p=>p.id===state.config.activeProfileId)||state.config.profiles[0];
+
+// ---------------- 渲染 ----------------
+function render(){renderProfiles();renderScenario();renderTab();persist();}
+
+function renderProfiles(){
+  const sel=$('#pfSel');sel.innerHTML='';
+  for(const p of state.config.profiles)sel.append(h('option',{value:p.id,selected:p.id===state.config.activeProfileId?'':null},p.name));
+}
+function renderScenario(){
+  const sc=profile().scenario;
+  $('#scPrompt').value=sc.promptTokens;$('#mixI').value=sc.mix.input;$('#mixC').value=sc.mix.cacheRead;$('#mixO').value=sc.mix.output;
+  $('#scOffPeak').checked=!!sc.offPeak;$('#scTiered').checked=profile().tieredPricing?.enabled!==false;
+  $('#fxMode').value=profile().exchangeRate.mode;$('#fxVal').value=profile().exchangeRate.mode==='manual'?(profile().exchangeRate.manualValue??state.rate):state.rate;
+  $('#fxVal').disabled=profile().exchangeRate.mode!=='manual';
+  $('#fxInfo').textContent=state.rateInfo;
+  try{const m=C.normalizeMix(sc.mix);$('#mixNorm').textContent=`归一化 ${(m.input*100).toFixed(0)}/${(m.cacheRead*100).toFixed(0)}/${(m.output*100).toFixed(0)}`;}catch(e){$('#mixNorm').textContent=e.message;}
+  const ps=$('#presetSel');ps.innerHTML='<option value="">—</option>';
+  (sc.presets||[]).forEach(p=>ps.append(h('option',{value:p.id},p.name)));
+}
+function renderTab(){
+  $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===state.tab));
+  $$('main section').forEach(s=>s.hidden=s.id!=='t-'+state.tab);
+  ({result:renderResult,stations:renderStations,official:renderOfficial,estimate:renderEstimate})[state.tab]();
+}
+
+// ---------- 结果表 ----------
+const FILTERS=[['profileId','配置'],['stationId','站'],['providerId','提供商'],['vendorId','厂商'],['series','系列']];
+function renderResult(){
+  const rows=C.summaryRows(state.config.profiles,state.dataset,state.rate);
+  const bar=$('#filters');bar.innerHTML='';
+  for(const [k,label] of FILTERS){
+    const vals=[...new Set(rows.map(r=>k==='profileId'?r.profileName:k==='stationId'?r.stationName:k==='providerId'?r.providerName:k==='vendorId'?r.vendorName:r[k]))].sort();
+    const sel=h('select',{},h('option',{value:''},label+':全部'),...vals.map(v=>h('option',{value:v,selected:state.filters[k]===v?'':null},v)));
+    sel.onchange=()=>{state.filters[k]=sel.value||null;renderResult();};
+    bar.append(sel);
+  }
+  const search=h('input',{type:'text',placeholder:'搜索模型',value:state.filters.q||''});
+  search.oninput=()=>{state.filters.q=search.value;renderResult();};bar.append(search);
+  const f=state.filters;
+  const shown=rows.filter(r=>(!f.profileId||r.profileName===f.profileId)&&(!f.stationId||r.stationName===f.stationId)&&(!f.providerId||r.providerName===f.providerId)&&(!f.vendorId||r.vendorName===f.vendorId)&&(!f.series||r.series===f.series)&&(!f.q||r.modelId.includes(f.q.toLowerCase())));
+  $('#rowCount').textContent=`共 ${shown.length} 行（全部档案合计 ${rows.length}）`;
+  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny','官方(¥)']];
+  const t=$('#resultTable');t.innerHTML='';
+  if(!shown.length){t.append(h('tr',{},h('td',{class:'dim',colspan:cols.length},'无结果——建个站点或放宽筛选')));return;}
+  const tr=h('tr',{});
+  for(const [k,label] of cols){const th=h('th',{},label+(state.sort.key===k?(state.sort.dir>0?' ↑':' ↓'):' ↕'));
+    th.onclick=()=>{state.sort=state.sort.key===k?{key:k,dir:-state.sort.dir}:{key:k,dir:k==='priceCny'?1:1};renderResult();};tr.append(th);}
+  t.append(tr);
+  const sorted=[...shown].sort((a,b)=>{
+    const d=state.sort.dir,k=state.sort.key;
+    if(k==='priceNative'){const g=x=>x.currency==='CNY'?0:1;return d*((g(a)-g(b))||((a.priceNative??0)-(b.priceNative??0)));}
+    const va=a[k],vb=b[k];
+    return d*(typeof va==='number'?(va??0)-(vb??0):String(va).localeCompare(String(vb),'zh'));
+  });
+  for(const r of sorted){
+    const srcCls=r.source==='official'?'src-official':r.source==='global-override'?'src-custom':'src-discount';
+    t.append(h('tr',{},
+      h('td',{},r.profileName),h('td',{},r.stationName),h('td',{},r.providerName),
+      h('td',{},r.vendorName),h('td',{},r.series),h('td',{},r.modelId),
+      h('td',{},r.tierLabel),h('td',{class:srcCls},String(r.discount)),
+      h('td',{},fmt(r.priceNative,r.currency)),h('td',{},fmtC(r.priceCny)),h('td',{class:'dim'},fmtC(r.officialCny))));
+  }
+}
+
+// ---------- 中转站管理（树） ----------
+function renderStations(){
+  const tree=$('#stTree');tree.innerHTML='';
+  const pf=profile();
+  if(!pf.stations.length){tree.append(h('div',{class:'empty'},'还没有站点——点「＋新建站点」开始'));return;}
+  for(const st of pf.stations){
+    tree.append(nodeEl(1,[h('b',{},`▼ ${st.name}`),`　默认折${st.defaultDiscount??1} `,
+      sw(st.tieredPricing?.enabled,'分档'),' ',st.enabled?'☑启用':'☐停用'],
+      [['编辑',()=>editStation(st)],['⧉复制',()=>{pf.stations.push(C.cloneNode(st,'station'));render();}],['🗑',()=>del(`删除站点「${st.name}」？`,()=>{pf.stations=pf.stations.filter(x=>x!==st);render();})]],!st.enabled));
+    for(const pr of st.providers||[]){
+      const scope=pr.scope?.modelIds?.length?`白名单 ${pr.scope.modelIds.length} 模型`:
+        `${pr.scope?.vendorIds?.length?pr.scope.vendorIds.join(','):'全部厂商'}/${pr.scope?.series?.length?pr.scope.series.join(','):'全部系列'}`;
+      const lastProv=st.providers.length===1;
+      tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
+        sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
+        [['编辑',()=>editProvider(st,pr)],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
+         ['🗑',()=>lastProv?alert('站内最后一个提供商不可删除，可禁用'):del(`删除提供商「${pr.name}」？`,()=>{st.providers=st.providers.filter(x=>x!==pr);render();})]],!pr.enabled));
+      for(const o of pr.modelOverrides||[]){
+        const lbl=o.basePrice?`自定价(${o.basePrice.tiers.length}档)✎`:`折${o.discount}`;
+        tree.append(nodeEl(3,[`覆盖: ${o.modelId} · ${lbl} `,sw(o.tieredPricing?.enabled,'分档')],
+          [['编辑',()=>editModelOverride(pr,o)],['⧉',()=>{pr.modelOverrides.push(C.cloneNode(o,'modelOverride'));render();}],
+           ['🗑',()=>{pr.modelOverrides=pr.modelOverrides.filter(x=>x!==o);render();}]]));
+      }
+    }
+  }
+}
+function nodeEl(lvl,content,ops,off){
+  const n=h('div',{class:`node lvl${lvl}${off?' off':''}`},...content);
+  const o=h('span',{class:'ops'});for(const [t,fn] of ops)o.append(h('button',{onclick:fn},t));
+  n.append(o);return n;
+}
+const sw=(on,label)=>h('span',{class:on?'':'dim'},(on?'☑':'☐')+label);
+function del(msg,fn){if(confirm(msg))fn();}
+
+// ---------- 编辑抽屉 ----------
+function drawer(title,bodyKids,onSave){
+  const d=$('#drawer');d.innerHTML='';d.hidden=false;
+  d.append(h('h3',{},title),...bodyKids);
+  const foot=h('div',{class:'foot'});
+  foot.append(h('button',{onclick:()=>d.hidden=true},'取消'),
+              h('button',{class:'primary',onclick:()=>{onSave();d.hidden=true;render();}},'保存'));
+  d.append(foot);
+  return d;
+}
+const row=(label,...kids)=>h('div',{class:'row'},h('span',{},label),...kids);
+const inp=(v,ty='text')=>h('input',{type:ty,value:v});
+
+function editStation(st){
+  const name=inp(st.name),url=inp(st.url||''),disc=inp(st.defaultDiscount??1,'number'),
+        tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false?'':null}),
+        en=h('input',{type:'checkbox',checked:st.enabled?'':null}),notes=inp(st.notes||'');
+  drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
+    row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp),row('启用',en),row('备注',notes),
+    h('div',{class:'hint'},'改名时默认提供商若仍与旧站名同名则联动改名')],
+    ()=>{const d=+disc.value;if(!(d>0&&d<=10))return alert('折扣须在(0,10]');
+      C.renameStation(st,name.value.trim()||st.name);
+      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;});
+}
+
+function editProvider(st,pr){
+  const name=inp(pr.name),en=h('input',{type:'checkbox',checked:pr.enabled?'':null}),
+        tp=h('input',{type:'checkbox',checked:pr.tieredPricing?.enabled!==false?'':null}),
+        discMode=h('select',{},h('option',{value:''},`继承站默认(${st.defaultDiscount})`),h('option',{value:'1',selected:pr.defaultDiscount!=null?'':null},'自填')),
+        disc=inp(pr.defaultDiscount??'','number');
+  const scope=pr.scope||(pr.scope={vendorIds:[],series:[],modelIds:[]});
+  const models=C.allModels(state.dataset);
+  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价）'),h('br'));
+  const vChips=h('div',{}),sChips=h('div',{}),mList=h('div',{});
+  const renderScope=()=>{
+    vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
+    vChips.append('厂商: ');
+    for(const v of state.dataset.providers){
+      const on=scope.vendorIds.includes(v.id);
+      vChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.vendorIds=scope.vendorIds.filter(x=>x!==v.id):scope.vendorIds.push(v.id);renderScope();}},v.id));
+    }
+    const seriesSet=[...new Set(models.filter(e=>!scope.vendorIds.length||scope.vendorIds.includes(e.vendor.id)).map(e=>C.classifySeries(e.model.id)))].sort();
+    sChips.append('系列(级联): ');
+    seriesSet.forEach(s=>{const on=scope.series.includes(s);
+      sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);renderScope();}},s));});
+    if(!scope.vendorIds.length&&!scope.series.length)sChips.append(h('small',{class:'dim'},'厂商与系列全不选=全量'));
+    mList.append(h('b',{},'或精确模型白名单: '));
+    (scope.modelIds||[]).forEach(id=>mList.append(h('span',{class:'chip',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},'×'+id)));
+    const mIn=inp('');mIn.placeholder='输入模型id回车添加';
+    mIn.onkeydown=e=>{if(e.key==='Enter'&&mIn.value.trim()){scope.modelIds.push(mIn.value.trim());renderScope();}};
+    mList.append(mIn);
+  };
+  renderScope();
+  const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关'),h('br'));
+  const sws=pr.vendorSwitches||(pr.vendorSwitches=[]);
+  for(const vid of scope.vendorIds){
+    const cur=sws.find(v=>v.vendorId===vid);
+    vs.append(h('label',{},h('input',{type:'checkbox',checked:(!cur||cur.tieredPricing?.enabled!==false)?'':null,
+      onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
+  }
+  drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
+    row('默认折扣',discMode,disc),vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
+    ()=>{pr.name=name.value.trim()||pr.name;pr.enabled=en.checked;pr.tieredPricing={enabled:tp.checked};
+      pr.defaultDiscount=discMode.value?+disc.value:null;});
+}
+
+function editModelOverride(pr,o){
+  const mid=o.modelId;
+  const disc=inp(o.discount??'','number'),tp=h('input',{type:'checkbox',checked:o.tieredPricing?.enabled!==false?'':null});
+  const useCustom=h('input',{type:'checkbox',checked:o.basePrice?'':null});
+  const tierBox=h('div',{class:'box'},h('b',{},'tiers（币种=模型官方币种）'));
+  const tiers=o.basePrice?o.basePrice.tiers:[{upToTokens:null,input:0,output:0,cacheRead:null}];
+  const renderT=()=>{tierBox.innerHTML='';tierBox.append(h('b',{},'tiers（币种=模型官方币种）'),h('br'));
+    tiers.forEach((t,i)=>{
+      const up=t.upToTokens==null?'无上限':`≤${t.upToTokens}`;
+      tierBox.append(h('div',{class:'row'},`${up}: 输入`,numIn(t,'input'),'缓存',numIn(t,'cacheRead',true),'输出',numIn(t,'output'),
+        i<tiers.length-1?h('button',{onclick:()=>{tiers.splice(i,1);renderT();}},'🗑'):''));
+    });
+    tierBox.append(h('button',{onclick:()=>{const prev=tiers[tiers.length-1];const up=prev.upToTokens;
+      tiers.splice(tiers.length-1,0,{upToTokens:(up??272000),input:prev.input,output:prev.output,cacheRead:prev.cacheRead});
+      if(tiers.length>1&&tiers[tiers.length-1].upToTokens!=null)tiers[tiers.length-1].upToTokens=null;renderT();}},'＋加档'));
+  };
+  const numIn=(t,k,nullable)=>{const i=inp(t[k]??'','number');i.onchange=()=>{t[k]=i.value===''&&nullable?null:+i.value;};return i;};
+  const upIn=h('div',{class:'row'},'阈值编辑: 各档上限在表格中以 ≤N 表示；首档上限',(()=>{const i=inp(tiers[0].upToTokens??'','number');i.onchange=()=>{tiers[0].upToTokens=i.value===''?null:+i.value;};return i;})(),'（留空=无上限，仅末档可空）');
+  renderT();
+  drawer(`编辑模型覆盖 — ${mid}`,[row('计价方式',h('label',{},'折扣',disc),h('label',{},useCustom,'自定义基础价')),
+    tpWrap=>tpWrap, // noop keep structure
+    tierBox,upIn,row('分档计价',tp)],
+    ()=>{const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked}};
+      if(useCustom.checked){const v=C.validateTiers(tiers,mid,[]);res.basePrice={tiers};}
+      Object.assign(o,res);});
+}
+
+// ---------- 官方价目 ----------
+function renderOfficial(){
+  const q=($('#offSearch').value||'').toLowerCase();
+  const t=$('#offTable');t.innerHTML='';
+  const cols=['模型','厂商','币种','输入','缓存读','输出','档位','官方更新','抓取日',''];
+  const tr=h('tr',{});cols.forEach(c=>tr.append(h('th',{class:'no-sort'},c)));t.append(tr);
+  let n=0;
+  for(const p of state.dataset.providers)for(const m of p.models){
+    if(q&&!m.id.includes(q))continue;if(++n>400)break;
+    const pr=m.tiers[0],last=m.tiers[m.tiers.length-1];
+    const rng=m.tiers.length>1?`${pr.input}→${last.input}`:pr.input;
+    const rngC=m.tiers.length>1?`${pr.cacheRead??pr.input}→${last.cacheRead??last.input}`:(pr.cacheRead??pr.input);
+    const rngO=m.tiers.length>1?`${pr.output}→${last.output}`:pr.output;
+    const tlabel=m.tiers.length>1?m.tiers.map((_,i)=>C.tierLabelOf(m.tiers,i)).join(' / '):'—';
+    t.append(h('tr',{},h('td',{},m.id),h('td',{},p.id),h('td',{},p.currency),
+      h('td',{},String(rng)),h('td',{},String(rngC)),h('td',{},String(rngO)),
+      h('td',{},tlabel),h('td',{},m.officialUpdatedAt||'—'),h('td',{},m.fetchedAt||'—'),
+      h('td',{},h('button',{onclick:()=>alert('「编辑官方价」将写档案全局 override（Demo 阶段先用模型覆盖代替）')},'编辑官方价'))));
+  }
+  $('#updInfo').textContent=`版本 ${state.dataset.meta?.version||'?'} · ${n} 模型`;
+}
+
+// ---------- 单次估算 ----------
+function renderEstimate(){
+  const ps=$('#estProv'),ms=$('#estModel');
+  if(!ps.dataset.init){
+    ps.dataset.init=1;
+    const pf=profile();
+    for(const st of pf.stations)for(const pr of st.providers)
+      ps.append(h('option',{value:`${st.id}|${pr.id}`},`${st.name}/${pr.name}`));
+    for(const e of C.allModels(state.dataset))
+      if(!e.model.id.includes('image')&&!e.model.id.includes('tts'))
+        ms.append(h('option',{value:e.model.id},`${e.vendor.id}/${e.model.id}`));
+  }
+  const calc=()=>{
+    const [stId,prId]=(ps.value||'|').split('|');const pf=profile();
+    const st=pf.stations.find(s=>s.id===stId),pr=st?.providers.find(p=>p.id===prId);
+    const entry=[...C.modelIndex(state.dataset).values()].find(e=>e.model.id===ms.value);
+    if(!st||!pr||!entry){$('#estOut').textContent='';$('#estHint').textContent='选择提供商与模型';return;}
+    const u=C.resolveUnitPrices(entry,{profile:pf,station:st,provider:pr,promptTokens:+pf.scenario.promptTokens||0,offPeak:!!pf.scenario.offPeak});
+    if(!u.inScope){$('#estOut').textContent='';$('#estHint').textContent='该模型不在此提供商范围内';return;}
+    const cost=C.estimateRequest(u,{input:$('#estI').value,cacheRead:$('#estC').value,output:$('#estO').value});
+    const cur=entry.vendor.currency;
+    $('#estOut').textContent=`费用: ${fmt(cost,cur)} / ${fmtC(C.convert(cost,cur,state.rate))}`;
+    $('#estHint').textContent=`命中档 ${u.tierLabel||'—'} · 折扣 ${u.discount} · 来源 ${u.source}`;
+  };
+  [ps,ms,$('#estI'),$('#estC'),$('#estO')].forEach(el=>el.onchange=el.oninput=calc);
+  calc();
+}
+
+// ---------- 事件绑定 ----------
+function bindGlobal(){
+  $('#tabs').onclick=e=>{if(e.target.dataset.t){state.tab=e.target.dataset.t;render();}};
+  $('#pfSel').onchange=e=>{state.config.activeProfileId=e.target.value;$('#estProv').dataset.init='';$('#estProv').innerHTML='';render();};
+  $('#pfNew').onclick=()=>{const n=prompt('新档案名','新配置');if(!n)return;const p=C.newProfile(n);state.config.profiles.push(p);state.config.activeProfileId=p.id;render();};
+  $('#pfClone').onclick=()=>{const c=C.cloneNode(profile(),'profile');state.config.profiles.push(c);state.config.activeProfileId=c.id;render();};
+  $('#pfRename').onclick=()=>{const n=prompt('重命名',profile().name);if(n)profile().name=n;render();};
+  $('#pfDel').onclick=()=>{if(state.config.profiles.length<=1)return alert('至少保留一个档案');
+    del(`删除档案「${profile().name}」？`,()=>{state.config.profiles=state.config.profiles.filter(p=>p!==profile());state.config.activeProfileId=state.config.profiles[0].id;render();});};
+  $('#cfgExport').onclick=()=>{const b=new Blob([JSON.stringify(state.config,null,2)],{type:'application/json'});
+    const a=h('a',{href:URL.createObjectURL(b),download:'aipc-config.json'});a.click();};
+  $('#cfgImport').onclick=()=>$('#importFile').click();
+  $('#importFile').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());
+    const v=C.validateConfig(j);if(!v.ok)return alert('导入失败:\n'+v.errors.join('\n'));
+    state.config=j;render();}catch(err){alert('解析失败: '+err.message);}};
+  $('#scPrompt').onchange=e=>{profile().scenario.promptTokens=+e.target.value||0;render();};
+  for(const [id,k] of [['mixI','input'],['mixC','cacheRead'],['mixO','output']])
+    $(id).onchange=e=>{profile().scenario.mix[k]=+e.target.value||0;render();};
+  $('#presetSel').onchange=e=>{const p=(profile().scenario.presets||[]).find(x=>x.id===e.target.value);
+    if(p){profile().scenario.mix={...p.mix};profile().scenario.promptTokens=p.promptTokens;render();}};
+  $('#presetSave').onclick=()=>{const n=prompt('预设名');if(!n)return;
+    profile().scenario.presets.push({id:'p'+Date.now(),name:n,promptTokens:profile().scenario.promptTokens,mix:{...profile().scenario.mix}});render();};
+  $('#scOffPeak').onchange=e=>{profile().scenario.offPeak=e.target.checked;render();};
+  $('#scTiered').onchange=e=>{profile().tieredPricing={enabled:e.target.checked};render();};
+  $('#fxMode').onchange=e=>{profile().exchangeRate.mode=e.target.value;if(e.target.value==='manual')profile().exchangeRate.manualValue=+$('#fxVal').value||7.1;loadFx().then(render);};
+  $('#fxVal').onchange=e=>{profile().exchangeRate.manualValue=+e.target.value;state.rate=+e.target.value;render();};
+  $('#fxRefresh').onclick=()=>loadFx().then(render);
+  $('#stNew').onclick=()=>{const n=prompt('站点名');if(!n)return;profile().stations.push(C.newStation(n));render();};
+  $('#offSearch').oninput=renderOfficial;
+  $('#updBtn').onclick=async()=>{
+    if(!state.backend)return alert('需要后端：python -m server.app');
+    $('#updInfo').textContent='更新中…';
+    try{const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const {jobId}=await r.json();
+      const poll=setInterval(async()=>{const j=await(await fetch('/api/jobs/'+jobId)).json();
+        if(j.status!=='running'){clearInterval(poll);
+          const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
+          $('#updInfo').textContent=j.status==='done'?'更新完成（详见控制台报告）':'失败: '+j.error;
+          console.log('pricing update report',j.report);render();}},1500);
+    }catch(e){$('#updInfo').textContent='更新失败: '+e.message;}
+  };
+}
+boot();
+</script>
+</body>
+</html>

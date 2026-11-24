@@ -1,0 +1,380 @@
+/* AI 价格归一化 — 纯计算模块（无 DOM，可被浏览器 <script> 与 node:test 复用）
+ * 约定：
+ * - 所有单价 = 每 1M tokens；tiers 按 upToTokens 升序，末档 null=无上限；
+ *   命中第一个 upToTokens===null || promptTokens<=upToTokens 的档。
+ * - 不换汇价 = 模型官方币种原值；换汇价 = 恒人民币（USD×rate，CNY 原样）。
+ * - 分档五级开关：账户(profile) > 站 > 提供商 > 厂商 > 模型；上级关=全失档但不改子级状态。
+ */
+"use strict";
+
+const CNY = "CNY";
+
+// ---------- 基础 ----------
+
+function pickTier(tiers, promptTokens) {
+  for (const t of tiers) {
+    if (t.upToTokens == null || promptTokens <= t.upToTokens) return t;
+  }
+  return tiers[tiers.length - 1];
+}
+
+function pickTierIndex(tiers, promptTokens) {
+  for (let i = 0; i < tiers.length; i++) {
+    if (tiers[i].upToTokens == null || promptTokens <= tiers[i].upToTokens) return i;
+  }
+  return tiers.length - 1;
+}
+
+function normalizeMix(mix) {
+  const i = +mix.input || 0, c = +mix.cacheRead || 0, o = +mix.output || 0;
+  const s = i + c + o;
+  if (s <= 0) throw new Error("配比合计必须大于 0");
+  return { input: i / s, cacheRead: c / s, output: o / s };
+}
+
+function convert(amount, fromCurrency, rate) {
+  // 换汇目标恒为 CNY：USD→×rate；CNY→原样
+  if (amount == null) return null;
+  return fromCurrency === CNY ? amount : amount * rate;
+}
+
+// ---------- 模型系列归类（规则驱动，不落库） ----------
+
+const SERIES_RULES = [
+  [/^gpt-6/, "gpt-6.x"], [/^gpt-5/, "gpt-5.x"], [/^gpt-4/, "gpt-4.x"],
+  [/^o\d/, "o系"], [/^claude-fable/, "claude-fable"], [/^claude-mythos/, "claude-mythos"],
+  [/^claude-opus/, "claude-opus"], [/^claude-sonnet/, "claude-sonnet"], [/^claude-haiku/, "claude-haiku"],
+  [/^gemini-\d+\.\d+-pro/, "gemini-pro"], [/^gemini-\d+-pro/, "gemini-pro"],
+  [/^gemini-.*flash-lite/, "gemini-flash-lite"], [/^gemini-.*flash/, "gemini-flash"],
+  [/^gemini/, "gemini-其他"], [/^grok-4\.20/, "grok-4.20"], [/^grok-4/, "grok-4.x"], [/^grok/, "grok-其他"],
+  [/^deepseek/, "deepseek"], [/^glm-5/, "glm-5.x"], [/^glm-4/, "glm-4.x"], [/^glm/, "glm-其他"],
+  [/^kimi-k3/, "kimi-k3"], [/^kimi/, "kimi-其他"], [/^moonshot/, "kimi-其他"],
+];
+
+function classifySeries(modelId) {
+  for (const [re, s] of SERIES_RULES) if (re.test(modelId)) return s;
+  return "其他";
+}
+
+// ---------- 数据集索引 ----------
+
+function modelIndex(dataset) {
+  // -> Map<modelId, {model, provider(vendor)}>
+  const idx = new Map();
+  for (const p of dataset.providers || []) {
+    for (const m of p.models || []) {
+      if (!idx.has(m.id)) idx.set(m.id, { model: m, vendor: p });
+    }
+  }
+  return idx;
+}
+
+function allModels(dataset) {
+  const out = [];
+  for (const p of dataset.providers || [])
+    for (const m of p.models || []) out.push({ model: m, vendor: p });
+  return out;
+}
+
+// ---------- 提供范围 ----------
+
+function inScope(scope, model, vendorId) {
+  if (!scope) return true;
+  if (scope.modelIds && scope.modelIds.length) return scope.modelIds.includes(model.id);
+  const vOk = !scope.vendorIds || !scope.vendorIds.length || scope.vendorIds.includes(vendorId);
+  const sOk = !scope.series || !scope.series.length || scope.series.includes(classifySeries(model.id));
+  return vOk && sOk;
+}
+
+// ---------- 价格解析 ----------
+
+const tpOn = (obj) => !obj || !obj.tieredPricing || obj.tieredPricing.enabled !== false;
+
+/**
+ * 解析某「站/提供商」下某模型的实际单项价。
+ * @param entry {model, vendor} 来自 modelIndex/allModels
+ * @param ctx {profile, station, provider, promptTokens, offPeak}
+ * @returns {input, output, cacheRead, discount, tierIndex, tierLabel, source, inScope}
+ */
+function resolveUnitPrices(entry, ctx) {
+  const { model, vendor } = entry;
+  const { profile, station, provider, promptTokens, offPeak } = ctx;
+
+  if (!inScope(provider && provider.scope, model, vendor.id))
+    return { inScope: false };
+
+  // 覆盖查找：提供商级 > 档案全局级 > 官方
+  const mOv = (provider.modelOverrides || []).find(o => o.modelId === model.id);
+  const gOv = (profile.modelOverrides || []).find(o => o.modelId === model.id);
+  const tiers = (mOv && mOv.basePrice && mOv.basePrice.tiers)
+    || (gOv && gOv.basePrice && gOv.basePrice.tiers)
+    || model.tiers;
+  const source = mOv && mOv.basePrice ? "provider-custom"
+    : gOv && gOv.basePrice ? "global-override" : "official";
+
+  // 五级分档开关：账户→站→提供商→厂商→模型
+  const vSw = (provider.vendorSwitches || []).find(v => v.vendorId === vendor.id);
+  const tiered = tpOn(profile) && tpOn(station) && tpOn(provider) && tpOn(vSw) && tpOn(mOv);
+
+  const ti = tiered ? pickTierIndex(tiers, promptTokens) : 0;
+  const tier = tiers[ti];
+
+  // 折扣链：模型覆盖 > 提供商默认 > 站默认 > 1
+  const discount = (mOv && mOv.discount != null ? mOv.discount
+    : provider.defaultDiscount != null ? provider.defaultDiscount
+    : station.defaultDiscount != null ? station.defaultDiscount : 1);
+
+  const peak = offPeak && model.offPeakRatio ? model.offPeakRatio : 1;
+  const input = tier.input * peak;
+  const output = tier.output * peak;
+  const cacheRead = (tier.cacheRead != null ? tier.cacheRead : tier.input) * peak; // 无缓存价→按 input
+  return {
+    inScope: true,
+    input, output, cacheRead,
+    discount, tierIndex: ti,
+    tierLabel: tiers.length > 1 ? tierLabel(tier) : "—",
+    source, tiered,
+    noCachePrice: tier.cacheRead == null,
+  };
+}
+
+function tierLabel(tier) {
+  return tier.upToTokens == null ? `>${fmtK(prevHint(tier))}` : `≤${fmtK(tier.upToTokens)}`;
+}
+function prevHint() { return ""; } // 占位：上限标签只画 ≤N / 顶档
+function fmtK(n) {
+  if (n == null) return "";
+  return n >= 1000 ? `${Math.round(n / 1000)}K` : `${n}`;
+}
+// 更友好的档位标签：需要上一档上界；由调用方传 tiers+idx 时用 tierLabelOf
+function tierLabelOf(tiers, idx) {
+  const t = tiers[idx];
+  if (t == null) return "—";
+  if (t.upToTokens == null) {
+    const prev = idx > 0 ? tiers[idx - 1].upToTokens : null;
+    return prev != null ? `>${fmtK(prev)}` : "全部";
+  }
+  return `≤${fmtK(t.upToTokens)}`;
+}
+
+function blendedPrice(u, mix) {
+  const m = normalizeMix(mix);
+  return (u.input * m.input + u.cacheRead * m.cacheRead + u.output * m.output) * u.discount;
+}
+
+// ---------- 结果行生成 ----------
+
+/**
+ * 生成全档案结果明细行。
+ * @returns [{profileId,profileName,stationId,stationName,providerId,providerName,
+ *            vendorId,vendorName,series,modelId,modelName,tierLabel,discount,source,
+ *            priceNative,currency,priceCny,officialCny}]
+ */
+function summaryRows(profiles, dataset, rate) {
+  const idx = allModels(dataset);
+  const rows = [];
+  for (const pf of profiles || []) {
+    const sc = pf.scenario || {};
+    const mix = sc.mix || { input: 1, cacheRead: 0, output: 0 };
+    for (const st of pf.stations || []) {
+      if (st.enabled === false) continue;
+      for (const pr of st.providers || []) {
+        if (pr.enabled === false) continue;
+        for (const entry of idx) {
+          const u = resolveUnitPrices(entry, {
+            profile: pf, station: st, provider: pr,
+            promptTokens: +sc.promptTokens || 0, offPeak: !!sc.offPeak,
+          });
+          if (!u.inScope) continue;
+          const cur = entry.vendor.currency || "USD";
+          const native = blendedPrice(u, mix);
+          // 官方基准价（无折扣、官方 tier、同档位逻辑）
+          const off = officialPrice(entry, pf, rate);
+          rows.push({
+            profileId: pf.id, profileName: pf.name,
+            stationId: st.id, stationName: st.name,
+            providerId: pr.id, providerName: pr.name,
+            vendorId: entry.vendor.id, vendorName: entry.vendor.name,
+            series: classifySeries(entry.model.id),
+            modelId: entry.model.id, modelName: entry.model.name || entry.model.id,
+            tierLabel: tierLabelOf(
+              (u.source === "official" ? entry.model.tiers
+                : ((pr.modelOverrides || []).find(o => o.modelId === entry.model.id) || {}).basePrice?.tiers
+                  || ((pf.modelOverrides || []).find(o => o.modelId === entry.model.id) || {}).basePrice?.tiers
+                  || entry.model.tiers),
+              u.tierIndex),
+            tierIndex: u.tierIndex,
+            discount: u.discount, source: u.source, tiered: u.tiered,
+            priceNative: native, currency: cur,
+            priceCny: convert(native, cur, rate),
+            officialCny: off,
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+function officialPrice(entry, profile, rate) {
+  const sc = profile.scenario || {};
+  const m = normalizeMix(sc.mix || { input: 1, cacheRead: 0, output: 0 });
+  const t = pickTier(entry.model.tiers, +sc.promptTokens || 0);
+  const cr = t.cacheRead != null ? t.cacheRead : t.input;
+  const p = t.input * m.input + cr * m.cacheRead + t.output * m.output;
+  return convert(p, entry.vendor.currency || "USD", rate);
+}
+
+// ---------- 单次估算 ----------
+
+function estimateRequest(u, usage) {
+  // usage: {input, cacheRead, output} 实际 tokens；档位已由调用方按 promptTokens 判好
+  return ((+usage.input || 0) * u.input
+        + (+usage.cacheRead || 0) * u.cacheRead
+        + (+usage.output || 0) * u.output) / 1e6 * u.discount;
+}
+
+// ---------- 构造与克隆 ----------
+
+let _seq = 0;
+const uid = (p) => `${p}-${Date.now().toString(36)}-${(_seq++).toString(36)}`;
+
+function newProvider(name, isDefault) {
+  return {
+    id: uid("pr"), name, isDefault: !!isDefault,
+    enabled: true, defaultDiscount: null,
+    tieredPricing: { enabled: true },
+    scope: { vendorIds: [], series: [], modelIds: [] },
+    vendorSwitches: [], modelOverrides: [],
+  };
+}
+
+function newStation(name) {
+  return {
+    id: uid("st"), name, url: "",
+    enabled: true, defaultDiscount: 1, notes: "",
+    tieredPricing: { enabled: true },
+    providers: [newProvider(name, true)],   // 默认提供商与站同名
+  };
+}
+
+function newProfile(name) {
+  return {
+    id: uid("pf"), name, notes: "",
+    exchangeRate: { mode: "auto", manualValue: null,
+                    auto: { value: null, source: null, fetchedAt: null } },
+    scenario: {
+      promptTokens: 128000,
+      mix: { input: 0.7, cacheRead: 0.2, output: 0.1 },
+      offPeak: false, presets: [], activePreset: null,
+    },
+    tieredPricing: { enabled: true },
+    stations: [], modelOverrides: [],
+    display: { precision: 4, targetCurrency: CNY },
+  };
+}
+
+function defaultConfig() {
+  const p = newProfile("默认配置");
+  return { version: 2, activeProfileId: p.id, profiles: [p] };
+}
+
+/** F13 深拷贝节点并重新分配 id、名称加「副本」。kind: profile|station|provider|modelOverride */
+function cloneNode(node, kind) {
+  const c = JSON.parse(JSON.stringify(node));
+  const reid = (o, prefix) => { o.id = uid(prefix); };
+  if (kind === "profile") {
+    reid(c, "pf"); c.name += " 副本";
+    for (const st of c.stations || []) {
+      reid(st, "st");
+      for (const pr of st.providers || []) {
+        reid(pr, "pr");
+        (pr.modelOverrides || []).forEach(o => { o.id = uid("ov"); });
+      }
+    }
+    (c.modelOverrides || []).forEach(o => { o.id = uid("ov"); });
+  } else if (kind === "station") {
+    reid(c, "st"); c.name += " 副本";
+    for (const pr of c.providers || []) {
+      reid(pr, "pr");
+      (pr.modelOverrides || []).forEach(o => { o.id = uid("ov"); });
+    }
+  } else if (kind === "provider") {
+    reid(c, "pr"); c.name += " 副本"; c.isDefault = false;
+    (c.modelOverrides || []).forEach(o => { o.id = uid("ov"); });
+  } else if (kind === "modelOverride") {
+    reid(c, "ov");
+  }
+  return c;
+}
+
+/** 站改名时联动默认提供商（若仍与旧名相同） */
+function renameStation(station, newName) {
+  const old = station.name;
+  station.name = newName;
+  for (const pr of station.providers || []) {
+    if (pr.isDefault && pr.name === old) pr.name = newName;
+  }
+}
+
+// ---------- 校验 ----------
+
+function validateConfig(json) {
+  const errors = [];
+  const req = (cond, msg) => { if (!cond) errors.push(msg); };
+  req(json && typeof json === "object", "配置必须是 JSON 对象");
+  if (!json || typeof json !== "object") return { ok: false, errors };
+  req(Array.isArray(json.profiles), "profiles 必须是数组");
+  for (const pf of json.profiles || []) {
+    req(pf.id && pf.name, "档案缺少 id/name");
+    const sc = pf.scenario || {};
+    if (sc.mix) {
+      const s = (+sc.mix.input || 0) + (+sc.mix.cacheRead || 0) + (+sc.mix.output || 0);
+      req(s > 0, `档案「${pf.name}」配比合计必须>0`);
+    }
+    for (const st of pf.stations || []) {
+      req(Array.isArray(st.providers) && st.providers.length >= 1,
+          `站点「${st.name}」必须至少有 1 个提供商`);
+      for (const pr of st.providers || []) {
+        for (const o of pr.modelOverrides || []) {
+          if (o.discount != null) req(o.discount > 0 && o.discount <= 10,
+              `覆盖「${o.modelId}」折扣须在 (0,10]`);
+          if (o.basePrice) validateTiers(o.basePrice.tiers, o.modelId, errors);
+        }
+      }
+    }
+    for (const o of pf.modelOverrides || []) {
+      if (o.basePrice) validateTiers(o.basePrice.tiers, o.modelId, errors);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function validateTiers(tiers, modelId, errors) {
+  const req = (cond, msg) => { if (!cond) errors.push(msg); };
+  req(Array.isArray(tiers) && tiers.length >= 1, `「${modelId}」tiers 至少 1 档`);
+  let prev = -1;
+  (tiers || []).forEach((t, i) => {
+    req(typeof t.input === "number" && t.input >= 0, `「${modelId}」档${i} input 须 ≥0`);
+    req(typeof t.output === "number" && t.output >= 0, `「${modelId}」档${i} output 须 ≥0`);
+    if (t.upToTokens != null) {
+      req(t.upToTokens > prev, `「${modelId}」档${i} upToTokens 须升序`);
+      prev = t.upToTokens;
+    }
+    if (i === tiers.length - 1) req(t.upToTokens == null, `「${modelId}」末档须无上限`);
+    else req(t.upToTokens != null, `「${modelId}」非末档须有上限`);
+  });
+}
+
+// ---------- 导出 ----------
+
+const Calc = {
+  CNY, pickTier, pickTierIndex, normalizeMix, convert,
+  classifySeries, modelIndex, allModels, inScope,
+  resolveUnitPrices, blendedPrice, summaryRows, officialPrice,
+  estimateRequest, newProvider, newStation, newProfile, defaultConfig,
+  cloneNode, renameStation, validateConfig, validateTiers, tierLabelOf, fmtK,
+};
+
+if (typeof module !== "undefined" && module.exports) module.exports = Calc;
+if (typeof window !== "undefined") window.Calc = Calc;
