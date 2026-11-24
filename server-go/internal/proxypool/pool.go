@@ -150,12 +150,13 @@ type ProbeReport struct {
 }
 
 // ProbeHooks 探测事件回调（均可为nil）：
-// OnNodeStart 节点开测；OnTarget 节点开始抓某个目标（组合进度用）；
-// OnProgress 批次完成。
+// OnNodeStart 节点开测；OnTarget/OnTargetDone 节点开始/结束抓某目标
+// （组合进度 + 在飞集合）；OnProgress 批次完成。
 type ProbeHooks struct {
-	OnNodeStart func(label string, idx, total int)
-	OnTarget    func(nodeLabel, key string)
-	OnProgress  func(tested int, pending []string)
+	OnNodeStart  func(label string, idx, total int)
+	OnTarget     func(nodeLabel, key string)
+	OnTargetDone func(nodeLabel, key string)
+	OnProgress   func(tested int, pending []string)
 }
 
 // ProbeNode 单节点探测一组 URL。validate 非nil时对 200 响应做内容校验
@@ -175,6 +176,9 @@ func ProbeNode(n Node, urls map[string]string, timeoutMS int,
 			hooks.OnTarget(n.Label(), key)
 		}
 		r := FetchURL(u, lb.Port, timeoutMS)
+		if hooks != nil && hooks.OnTargetDone != nil {
+			hooks.OnTargetDone(n.Label(), key)
+		}
 		if validate != nil && r.Status == 200 && !validate(key, r.Body) {
 			r.Error = "返回内容校验未通过（疑似反爬/地区限制页）"
 		}

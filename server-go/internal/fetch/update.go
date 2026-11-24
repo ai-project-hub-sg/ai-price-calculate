@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/proxypool"
@@ -18,7 +19,7 @@ import (
 type Progress struct {
 	Phase     string   `json:"phase"`              // direct|sub|warm|probe|merge
 	Item      string   `json:"item,omitempty"`     // 当前活动：direct=厂家id，节点阶段="节点 → 厂家"
-	Current   string   `json:"current,omitempty"`  // 正在抓取的厂家 id（徽章高亮）
+	Current   []string `json:"current"`            // 正在抓取的厂家 id 集（并发节点各抓一个，全亮）
 	ItemIndex int      `json:"itemIndex,omitempty"`
 	ItemTotal int      `json:"itemTotal,omitempty"`
 	Targets   []string `json:"targets"`            // 全部价目源（有序）
@@ -63,9 +64,19 @@ func Update(o Options) (map[string]any, error) {
 	fetched := map[string]string{}
 	needProxy := map[string]string{}
 	doneSet := map[string]bool{} // 已解决：直连抓到（fetched）或未知源跳过
+	inflight := map[string]int{} // 正在抓取的厂家（计数：并发节点可同抓一个）
+	var pMu sync.Mutex           // inflight 从探测 goroutine 并发改——必须加锁
+	bump := func(k string, d int) {
+		pMu.Lock()
+		inflight[k] += d
+		if inflight[k] <= 0 {
+			delete(inflight, k)
+		}
+		pMu.Unlock()
+	}
 
 	emit := func(p Progress) {
-		// 统一填充：Targets=全部源；Done=已解决厂家 id（待解/未到的都不算）。
+		// 统一填充：Targets=全部源；Done=已解决厂家 id；Current=在飞厂家集。
 		p.Targets = targets
 		p.Done = []string{} // 对齐规则：列表不输出 null
 		for _, t := range targets {
@@ -73,6 +84,13 @@ func Update(o Options) (map[string]any, error) {
 				p.Done = append(p.Done, t)
 			}
 		}
+		p.Current = []string{}
+		pMu.Lock()
+		for k := range inflight {
+			p.Current = append(p.Current, k)
+		}
+		pMu.Unlock()
+		sort.Strings(p.Current)
 		p.StartedAt = time.Now().UnixMilli()
 		if o.Progress != nil {
 			o.Progress(p)
@@ -96,14 +114,25 @@ func Update(o Options) (map[string]any, error) {
 			log(fmt.Sprintf("[%s] 未知 provider id，跳过", pid))
 			continue
 		}
-		emit(Progress{Phase: "direct", Item: pid, Current: pid,
+		bump(pid, +1)
+		emit(Progress{Phase: "direct", Item: pid,
 			ItemIndex: i + 1, ItemTotal: len(targets)})
 		r := proxypool.FetchURL(src.URL, 0, 12_000)
+		bump(pid, -1)
 		pr := map[string]any{"via": "direct", "status": r.Status}
 		if r.Status == 200 && r.Bytes > minPricingBytes {
-			fetched[pid] = string(r.Body)
-			doneSet[pid] = true
-			log(fmt.Sprintf("[%s] 直连成功 %dB", pid, r.Bytes))
+			body := string(r.Body)
+			if src.Parse != nil && parsesEmpty(src.Parse, body) {
+				// 200 但解析为空 = 地区跳转/反爬墙页——立即判未抓到转节点池，
+				// 与传输层失败同级；解析 panic 不算空（merge 阶段报 parse-error）。
+				needProxy[pid] = src.URL
+				pr["error"] = "直连返回内容解析为空（疑似地区限制/反爬页）"
+				log(fmt.Sprintf("[%s] 直连成功 %dB 但解析为空，转节点池", pid, r.Bytes))
+			} else {
+				fetched[pid] = body
+				doneSet[pid] = true
+				log(fmt.Sprintf("[%s] 直连成功 %dB", pid, r.Bytes))
+			}
 		} else {
 			needProxy[pid] = src.URL
 			if r.Error != "" {
@@ -116,20 +145,6 @@ func Update(o Options) (map[string]any, error) {
 			log(fmt.Sprintf("[%s] 直连失败 %s，转节点池", pid, errDesc))
 		}
 		provs[pid] = pr
-	}
-
-	// 预解析：直连 200 但解析为空的页面（地区跳转/反爬墙页）按未抓到处理，
-	// 转节点池。解析 panic 不算"空"——留给 merge 阶段报 parse-error，不误送代理。
-	for pid, body := range fetched {
-		src := Sources[pid]
-		if src.Parse == nil || !parsesEmpty(src.Parse, body) {
-			continue
-		}
-		delete(fetched, pid)
-		delete(doneSet, pid)
-		needProxy[pid] = src.URL
-		provs[pid].(map[string]any)["error"] = "直连返回内容解析为空（疑似地区限制/反爬页）"
-		log(fmt.Sprintf("[%s] 直连内容解析为空，转节点池", pid))
 	}
 
 	if len(needProxy) > 0 {
@@ -199,10 +214,12 @@ func Update(o Options) (map[string]any, error) {
 							}
 							won := false
 							for pid, u := range needProxy {
-								emit(Progress{Phase: "warm", Current: pid,
+								bump(pid, +1)
+								emit(Progress{Phase: "warm",
 									Item: n.Label() + " → " + pid,
 									ItemIndex: i + 1, ItemTotal: len(usable)})
 								r := proxypool.FetchURL(u, lb.Port, 15_000)
+								bump(pid, -1)
 								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
 									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
 									delete(needProxy, pid)
@@ -232,8 +249,12 @@ func Update(o Options) (map[string]any, error) {
 									ItemIndex: idx, ItemTotal: total})
 							},
 							OnTarget: func(nodeLabel, key string) {
-								emit(Progress{Phase: "probe", Current: key,
+								bump(key, +1)
+								emit(Progress{Phase: "probe",
 									Item: nodeLabel + " → " + key})
+							},
+							OnTargetDone: func(nodeLabel, key string) {
+								bump(key, -1)
 							},
 							OnProgress: func(tested int, pending []string) {
 								log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
@@ -247,6 +268,7 @@ func Update(o Options) (map[string]any, error) {
 					}
 				}
 				for pid, win := range winners {
+					delete(needProxy, pid) // 胜出即不再算不可达（冷路径删的是 FindWorking 内部副本）
 					pr := provs[pid].(map[string]any)
 					pr["via"] = "node:" + win.Label
 					body := win.Body // 探测时已校验非空解析，直接复用

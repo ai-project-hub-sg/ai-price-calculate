@@ -256,13 +256,14 @@ class _LocalProxy:
 
 
 def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0,
-               validate=None, on_target=None) -> dict:
+               validate=None, on_target=None, on_target_done=None) -> dict:
     """单节点探测一组 URL，返回 {label, kind, results: {key: {...}}}。
 
     validate(key, body)->bool 非 None 时对 200 响应做内容校验（如"能解析出
     价目行"），校验不过记 error 不当可用——地区限制/反爬页也是 200，只看
     状态码会误判节点可用。
-    on_target(key) 开始抓某个目标前回调——组合进度（节点→厂家）用。
+    on_target(key) / on_target_done(key) 开始/结束抓某目标回调——
+    组合进度（节点→厂家）与在飞集合用。
     """
     out = {"node": node.label, "kind": node.kind, "results": {}}
     try:
@@ -272,6 +273,8 @@ def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0,
                 if on_target:
                     on_target(key)
                 r = fetch_url(url, lp.port, timeout=timeout)
+                if on_target_done:
+                    on_target_done(key)
                 if (validate and r.get("status") == 200
                         and not validate(key, r.get("body") or b"")):
                     r["error"] = "返回内容校验未通过（疑似反爬/地区限制页）"
@@ -300,6 +303,23 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
     winners: dict[str, dict] = {}
     report = []
     tried: set[str] = set()
+
+    def _mk_hooks(n: Node, phase: str, idx: int, total: int):
+        """节点开抓/抓完某目标的成对事件（inflight 集合 + 组合进度）。"""
+        if not on_progress:
+            return None, None
+
+        def start(key):
+            on_progress({"phase": phase, "node": n.label, "target": key,
+                         "inflight": True, "idx": idx, "total": total,
+                         "tested": len(report), "pending": list(pending)})
+
+        def end(key):
+            on_progress({"phase": phase, "node": n.label, "target": key,
+                         "inflight": False, "idx": idx, "total": total,
+                         "tested": len(report), "pending": list(pending)})
+
+        return start, end
 
     def absorb(res: dict, n: Node) -> None:
         report.append(res)
@@ -334,12 +354,8 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                          "total": len(warm), "tested": len(report),
                          "pending": list(pending)})
         try:
-            absorb(probe_node(
-                n, dict(pending), timeout, validate,
-                on_target=(lambda key, _n=n, _i=wi + 1: on_progress(
-                    {"phase": "warm", "node": _n.label, "target": key,
-                     "idx": _i, "total": len(warm), "tested": len(report),
-                     "pending": list(pending)})) if on_progress else None), n)
+            st, en = _mk_hooks(n, "warm", wi + 1, len(warm))
+            absorb(probe_node(n, dict(pending), timeout, validate, st, en), n)
         except Exception as e:
             absorb({"node": n.label, "error": str(e), "results": {}}, n)
         if on_progress:
@@ -358,13 +374,11 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                              "total": len(rest), "tested": len(report),
                              "pending": list(pending)})
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(
-                probe_node, n, snapshot, timeout, validate,
-                (lambda key, _n=n, _i=i + j + 1: on_progress(
-                    {"phase": "probe", "node": _n.label, "target": key,
-                     "idx": _i, "total": len(rest), "tested": len(report),
-                     "pending": list(pending)})) if on_progress else None): n
-                for j, n in enumerate(batch)}
+            futs = {}
+            for j, n in enumerate(batch):
+                st, en = _mk_hooks(n, "probe", i + j + 1, len(rest))
+                futs[ex.submit(probe_node, n, snapshot, timeout, validate,
+                               st, en)] = n
             for fut in as_completed(futs):
                 n = futs[fut]
                 try:

@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 
 from . import nodepool
@@ -422,12 +423,24 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     """progress(dict)：结构化进度回调（对齐 Go fetch.Progress），字段
     phase/item/itemIndex/itemTotal/done/total/pending/startedAt——前端据此渲染
     "在测哪个厂家/哪个节点/还剩多少/本项耗时"。无回调不影响行为。"""
+    ilock = threading.Lock()  # inflight 被探测线程并发改，读取快照也要拿锁
+
     def emit(phase: str, **kw):
         if progress:
+            with ilock:
+                current = sorted(inflight)
             progress({"phase": phase,
                       "startedAt": int(time.time() * 1000),
                       "targets": targets,
-                      "done": [t for t in targets if t in done_set], **kw})
+                      "done": [t for t in targets if t in done_set],
+                      "current": current, **kw})
+
+    def bump(pid: str, on: bool):
+        with ilock:
+            if on:
+                inflight.add(pid)
+            else:
+                inflight.discard(pid)
 
     targets = providers or list(SOURCES)
     dataset = json.load(open(MODELS_PATH, encoding="utf-8"))
@@ -436,13 +449,25 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     fetched: dict[str, str] = {}      # pid -> markdown text
     need_proxy: dict[str, str] = {}   # pid -> url
     done_set: set[str] = set()        # 已解决厂家（直连抓到/节点胜出）
+    inflight: set[str] = set()        # 正在抓取的厂家（并发节点各抓一个，全亮）
 
     for i, pid in enumerate(targets):
         src = SOURCES[pid]
-        emit("direct", item=pid, current=pid, itemIndex=i + 1,
-             itemTotal=len(targets))
+        bump(pid, True)
+        emit("direct", item=pid, itemIndex=i + 1, itemTotal=len(targets))
         r = nodepool.fetch_url(src["url"], None, timeout=12)
-        if r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY:
+        bump(pid, False)
+        ok = r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY
+        err = r.get("error") or r["status"]
+        if ok and src["parse"] is not None:
+            # 内联验空：墙页/反爬页立即转节点池，不等循环后统一判——
+            # 否则 direct 阶段会把 anthropic 之类先标成成功。
+            try:
+                if not src["parse"](r["body"].decode("utf-8", "replace")):
+                    ok, err = False, "直连返回内容解析为空（疑似地区限制/反爬页）"
+            except Exception:
+                pass  # 解析抛异常不算"空"——留给 merge 阶段报 parse-error
+        if ok:
             fetched[pid] = r["body"].decode("utf-8", "replace")
             done_set.add(pid)
             report["providers"][pid] = {"via": "direct", "status": 200}
@@ -451,34 +476,16 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
             need_proxy[pid] = src["url"]
             report["providers"][pid] = {"via": "direct",
                                         "status": r["status"],
-                                        "error": r.get("error")}
-            log(f"[{pid}] 直连失败 {r.get('error') or r['status']}，转节点池")
-
-    # 预解析：直连返回 200 但解析为空的页面（地区跳转/反爬墙页）按未抓到
-    # 处理转节点池。解析抛异常不算"空"——留给 merge 阶段报 parse-error。
-    for pid in list(fetched):
-        src = SOURCES[pid]
-        if src["parse"] is None:
-            continue
-        try:
-            empty = not src["parse"](fetched[pid])
-        except Exception:
-            empty = False
-        if empty:
-            del fetched[pid]
-            done_set.discard(pid)
-            need_proxy[pid] = src["url"]
-            report["providers"][pid].update(
-                {"error": "直连返回内容解析为空（疑似地区限制/反爬页）"})
-            log(f"[{pid}] 直连内容解析为空，转节点池")
+                                        "error": err}
+            log(f"[{pid}] 直连失败 {err}，转节点池")
 
     if need_proxy:
         log(f"节点池探测 {len(need_proxy)} 个目标（上限 {max_nodes} 节点）…")
         def _onp(p: dict):
-            if "target" in p:  # 节点开始抓某目标 → 组合进度
+            if "target" in p:  # 节点开抓/抓完某目标 → 在飞集合 + 组合进度
+                bump(p["target"], p.get("inflight", True))
                 emit(p.get("phase", "probe"), item=f"{p['node']} → {p['target']}",
-                     current=p["target"], itemIndex=p.get("idx"),
-                     itemTotal=p.get("total"))
+                     itemIndex=p.get("idx"), itemTotal=p.get("total"))
             elif "node" in p:  # 节点开测事件
                 emit(p.get("phase", "probe"), item=p["node"],
                      itemIndex=p.get("idx"), itemTotal=p.get("total"))
