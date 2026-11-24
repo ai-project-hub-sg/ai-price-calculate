@@ -109,7 +109,9 @@ function resolveUnitPrices(entry, ctx) {
   const { model, vendor } = entry;
   const { profile, station, provider, promptTokens, offPeak } = ctx;
 
-  if (!inScope(provider && provider.scope, model, vendor.id))
+  // 站点范围为提供商范围的上界（交集）：两层都要包含
+  if (!inScope(station && station.scope, model, vendor.id) ||
+      !inScope(provider && provider.scope, model, vendor.id))
     return { inScope: false };
 
   // 覆盖查找：提供商级 > 档案全局级 > 官方
@@ -323,6 +325,7 @@ function newStation(name) {
     id: uid("st"), name, url: "",
     enabled: true, defaultDiscount: 1, notes: "",
     tieredPricing: { enabled: true },
+    scope: { vendorIds: [], series: [], modelIds: [] },  // 站点可提供范围（上界）
     providers: [newProvider(name, true)],   // 默认提供商与站同名
   };
 }

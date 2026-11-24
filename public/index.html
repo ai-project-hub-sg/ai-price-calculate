@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.11 · d90deac</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.12 · edf5724</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -326,45 +326,69 @@ function renderStations(){
     }
   }
 }
-/** 模型级联多选抽屉：厂商→系列→模型 checkbox，返回选中 id 数组 */
+/** 模型树形多选抽屉：厂商→系列→模型三级三态 checkbox，返回选中 id 数组 */
 function pickModels(title,cb){
-  const entries=C.allModels(state.dataset);
-  const sel=new Set();
-  const vSel=h('select',{},h('option',{value:''},'厂商：全部'),...state.dataset.providers.map(p=>h('option',{value:p.id},p.id)));
-  const sSel=h('select',{});
-  const qIn=h('input',{type:'text',placeholder:'搜索模型'});
-  const list=h('div',{style:'border:1px solid #e7e5e4;border-radius:6px;max-height:300px;overflow-y:auto;padding:4px'});
+  const entries=C.allModels(state.dataset),sel=new Set();
+  const tree=new Map(); // vendorId -> Map<series, {id,name}[]>
+  for(const e of entries){
+    const v=e.vendor.id,s=C.classifySeries(e.model.id);
+    if(!tree.has(v))tree.set(v,new Map());
+    const sm=tree.get(v);if(!sm.has(s))sm.set(s,[]);
+    sm.get(s).push({id:e.model.id,name:e.model.name});
+  }
+  const qIn=h('input',{type:'text',placeholder:'搜索模型',style:'width:160px'});
+  const list=h('div',{style:'border:1px solid #e7e5e4;border-radius:6px;max-height:320px;overflow-y:auto;padding:4px'});
   const chips=h('div',{});
-  const state2={v:'',s:'',q:''};
+  const upds=[]; // 三态刷新器
   const refreshChips=()=>{chips.innerHTML='';
-    if(sel.size)chips.append('已选: ');
-    for(const id of sel)chips.append(h('span',{class:'chip',onclick:()=>{sel.delete(id);refreshChips();refreshList();}},'×'+id));
+    if(sel.size)chips.append(`已选 ${sel.size}: `);
+    for(const id of sel)chips.append(h('span',{class:'chip on',onclick:()=>{sel.delete(id);refreshAll();}},id+' ×'));
     ok.textContent=`确定(${sel.size})`;};
-  const refreshSeries=()=>{sSel.innerHTML='';
-    sSel.append(h('option',{value:''},'系列：全部'));
-    const ss=[...new Set(entries.filter(e=>!state2.v||e.vendor.id===state2.v).map(e=>C.classifySeries(e.model.id)))].sort();
-    ss.forEach(s=>sSel.append(h('option',{value:s,selected:state2.s===s},s)));
+  const refreshAll=()=>{upds.forEach(f=>f());refreshChips();};
+  const triBox=ids=>{ // 三态组 checkbox
+    const cb=h('input',{type:'checkbox'});
+    const upd=()=>{const n=ids.filter(i=>sel.has(i)).length;
+      cb.checked=n>0&&n===ids.length;cb.indeterminate=n>0&&n<ids.length;};
+    cb.onchange=()=>{cb.checked?ids.forEach(i=>sel.add(i)):ids.forEach(i=>sel.delete(i));refreshAll();};
+    return {el:cb,upd};
   };
-  const refreshList=()=>{list.innerHTML='';
-    const q=state2.q.toLowerCase();
-    const shown=entries.filter(e=>(!state2.v||e.vendor.id===state2.v)
-      &&(!state2.s||C.classifySeries(e.model.id)===state2.s)
-      &&(!q||e.model.id.includes(q)||(e.model.name||'').toLowerCase().includes(q)));
-    if(!shown.length){list.append(h('div',{class:'dim'},'无匹配'));return;}
-    for(const e of shown){
-      const cb=h('input',{type:'checkbox',checked:sel.has(e.model.id)});
-      cb.onchange=()=>{cb.checked?sel.add(e.model.id):sel.delete(e.model.id);refreshChips();};
-      list.append(h('label',{style:'display:block;padding:2px 4px;cursor:pointer'},cb,` ${e.model.id} `,h('small',{class:'dim'},`${e.vendor.id} · ${e.model.name||''}`)));
+  const refreshList=()=>{
+    list.innerHTML='';upds.length=0;
+    const q=qIn.value.toLowerCase();let any=false;
+    for(const [v,sm] of tree){
+      const vIds=[...sm.values()].flat().map(m=>m.id);
+      if(q&&!vIds.some(id=>id.includes(q)))continue;
+      any=true;
+      const vt=triBox(vIds);upds.push(vt.upd);
+      const body=h('div',{});
+      const arrow=h('span',{style:'cursor:pointer;user-select:none'},q?'▾ ':'▸ ');
+      const head=h('div',{style:'font-weight:600;background:#f5f5f4;padding:2px 4px'},vt.el,arrow,` ${v}`);
+      if(!q){body.style.display='none';arrow.onclick=()=>{const open=body.style.display!=='none';
+        body.style.display=open?'none':'';arrow.textContent=open?'▸ ':'▾ ';};}
+      list.append(head,body);
+      for(const [s,ms] of sm){
+        const sIds=ms.map(m=>m.id);
+        if(q&&!sIds.some(id=>id.includes(q)))continue;
+        const st=triBox(sIds);upds.push(st.upd);
+        body.append(h('div',{style:'margin-left:20px;font-weight:500'},st.el,` ${s}`));
+        for(const m of ms){
+          if(q&&!m.id.includes(q))continue;
+          const cb=h('input',{type:'checkbox',checked:sel.has(m.id)});
+          cb.onchange=()=>{cb.checked?sel.add(m.id):sel.delete(m.id);refreshAll();};
+          body.append(h('label',{style:'display:block;margin-left:40px;cursor:pointer'},cb,` ${m.id} `,h('small',{class:'dim'},m.name||'')));
+        }
+      }
     }
+    if(!any)list.append(h('div',{class:'dim'},'无匹配'));
+    upds.forEach(f=>f());
   };
-  vSel.onchange=()=>{state2.v=vSel.value;state2.s='';refreshSeries();refreshList();};
-  sSel.onchange=()=>{state2.s=sSel.value;refreshList();};
-  qIn.oninput=()=>{state2.q=qIn.value;refreshList();};
+  qIn.oninput=refreshList;
   const ok=h('button',{class:'primary',onclick:()=>{if(!sel.size)return;d.hidden=true;cb([...sel]);}},'确定(0)');
   const d=$('#drawer');d.innerHTML='';d.hidden=false;
-  refreshSeries();refreshList();refreshChips();
+  refreshList();refreshChips();
   d.append(h('h3',{},title+'（可多选）'),
-    h('div',{class:'row'},vSel,sSel,qIn),list,chips,
+    h('div',{class:'row'},qIn,h('small',{class:'dim'},'勾厂商=全选其下所有模型；▣=半选')),
+    list,chips,
     h('div',{class:'foot'},h('button',{onclick:()=>d.hidden=true},'取消'),ok));
   qIn.focus();
 }
@@ -405,12 +429,46 @@ function editStation(st){
         tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false}),
         en=h('input',{type:'checkbox',checked:st.enabled}),notes=inp(st.notes||'');
   const mx=mixEditor('配比',st.mix);
+  const scope=JSON.parse(JSON.stringify(st.scope||{vendorIds:[],series:[],modelIds:[]}));
+  const scEd=scopeEditor(scope);
   drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
     row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp),row('启用',en),row('备注',notes),
-    mx.el,h('div',{class:'hint'},'配比继承：模型覆盖 > 提供商 > 站 > 档案场景；改名时默认提供商若仍与旧站名同名则联动改名')],
+    mx.el,h('div',{class:'box'},h('b',{},'提供范围（站点能提供的上限；提供商只能在其内选择）'),scEd.el),
+    h('div',{class:'hint'},'配比继承：模型覆盖 > 提供商 > 站 > 档案场景；改名时默认提供商若仍与旧站名同名则联动改名')],
     ()=>{const d=+disc.value;if(!(d>0&&d<=10)){alert('折扣须在(0,10]');return false;}
       C.renameStation(st,name.value.trim()||st.name);
-      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();});
+      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();st.scope=scope;});
+}
+
+/** 提供范围编辑器（站/商共用）：厂商×系列 ∪ 白名单，返回 {el,refresh} */
+function scopeEditor(scope,onVendorChange){
+  const models=C.allModels(state.dataset);
+  const vChips=h('div',{}),sChips=h('div',{}),mList=h('div',{});
+  const refresh=()=>{
+    vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
+    vChips.append('厂商: ');
+    vChips.append(h('span',{class:'chip'+(!scope.vendorIds.length?' on':''),title:'不限制厂商',
+      onclick:()=>{scope.vendorIds=[];refresh();}},'全部'));
+    for(const v of state.dataset.providers){
+      const on=scope.vendorIds.includes(v.id);
+      vChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.vendorIds=scope.vendorIds.filter(x=>x!==v.id):scope.vendorIds.push(v.id);refresh();}},v.id));
+    }
+    const seriesSet=[...new Set(models.filter(e=>!scope.vendorIds.length||scope.vendorIds.includes(e.vendor.id)).map(e=>C.classifySeries(e.model.id)))].sort();
+    sChips.append('系列(级联): ');
+    sChips.append(h('span',{class:'chip'+(!scope.series.length?' on':''),title:'不限制系列',
+      onclick:()=>{scope.series=[];refresh();}},'全部'));
+    seriesSet.forEach(s=>{const on=scope.series.includes(s);
+      sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);refresh();}},s));});
+    const wl=scope.modelIds||[];
+    mList.append(h('div',{class:'dim',style:'font-size:12px'},
+      wl.length?`额外包含 ${wl.length} 个模型（与上方厂商×系列取并集）`:'可选：白名单=在厂商×系列范围外额外包含的模型'));
+    wl.forEach(id=>mList.append(h('span',{class:'chip on',title:'点击移除',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);refresh();}},id+' ×')));
+    mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
+      ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});refresh();})},'＋选择模型'));
+    onVendorChange&&onVendorChange(scope.vendorIds);
+  };
+  refresh();
+  return {el:h('div',{},vChips,sChips,mList),refresh};
 }
 
 function editProvider(st,pr){
@@ -422,34 +480,8 @@ function editProvider(st,pr){
   discMode.onchange=()=>{discWrap.style.display=discMode.value?'':'none';};
   const scope=JSON.parse(JSON.stringify(pr.scope||{vendorIds:[],series:[],modelIds:[]}));
   const sws=JSON.parse(JSON.stringify(pr.vendorSwitches||[]));
-  const models=C.allModels(state.dataset);
-  const vChips=h('div',{}),sChips=h('div',{}),mList=h('div',{});
-  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价）'),vChips,sChips,mList);
-  const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关（未选厂商时无项）'));
-  const renderScope=()=>{
-    vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
-    vChips.append('厂商: ');
-    // 「全部」为显式选项：空选=全量时它自身呈蓝色选中态，消除白/蓝歧义
-    vChips.append(h('span',{class:'chip'+(!scope.vendorIds.length?' on':''),title:'不限制厂商',
-      onclick:()=>{scope.vendorIds=[];renderScope();}},'全部'));
-    for(const v of state.dataset.providers){
-      const on=scope.vendorIds.includes(v.id);
-      vChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.vendorIds=scope.vendorIds.filter(x=>x!==v.id):scope.vendorIds.push(v.id);renderScope();}},v.id));
-    }
-    const seriesSet=[...new Set(models.filter(e=>!scope.vendorIds.length||scope.vendorIds.includes(e.vendor.id)).map(e=>C.classifySeries(e.model.id)))].sort();
-    sChips.append('系列(级联): ');
-    sChips.append(h('span',{class:'chip'+(!scope.series.length?' on':''),title:'不限制系列',
-      onclick:()=>{scope.series=[];renderScope();}},'全部'));
-    seriesSet.forEach(s=>{const on=scope.series.includes(s);
-      sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);renderScope();}},s));});
-    mList.innerHTML='';
-    const wl=scope.modelIds||[];
-    mList.append(h('div',{class:'dim',style:'font-size:12px'},
-      wl.length?`额外包含 ${wl.length} 个模型（与上方厂商×系列取并集）`:'可选：白名单=在厂商×系列范围外额外包含的模型'));
-    wl.forEach(id=>mList.append(h('span',{class:'chip on',title:'点击移除',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},id+' ×')));
-    mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
-      ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});renderScope();})},'＋选择模型'));
-    // 厂商级分档开关随所选厂商刷新
+  const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关'));
+  const renderVS=()=>{
     vs.innerHTML='';vs.append(h('b',{},'厂商级分档开关'+(scope.vendorIds.length?'':'（未选厂商时无项）')));
     for(const vid of scope.vendorIds){
       const cur=sws.find(v=>v.vendorId===vid);
@@ -457,7 +489,8 @@ function editProvider(st,pr){
         onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
     }
   };
-  renderScope();
+  const scEd=scopeEditor(scope,renderVS);
+  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价；不得超出站点范围）'),scEd.el);
   const mx=mixEditor('配比',pr.mix);
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
     row('默认折扣',discMode,discWrap),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
