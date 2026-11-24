@@ -332,10 +332,17 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int) {
 	}
 	nodes, err := proxypool.LoadSubscription(sub, logf)
 	if err != nil {
-		finish("error", nil, err)
-		return
+		if stale := s.nodeCache.StaleSubNodes(sub); len(stale) > 0 {
+			logf(fmt.Sprintf("订阅拉取失败（%s），回退缓存节点列表 %d 个（可能过期）",
+				err.Error(), len(stale)))
+			nodes = stale
+		} else {
+			finish("error", nil, err)
+			return
+		}
+	} else {
+		s.nodeCache.MarkSub(sub, nodes) // 列表入缓存：更新时免重拉
 	}
-	s.nodeCache.MarkSub(sub, nodes) // 列表入缓存：更新时免重拉
 	probed := maxNodes
 	if len(nodes) < probed {
 		probed = len(nodes)

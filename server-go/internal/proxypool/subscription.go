@@ -28,9 +28,20 @@ func (n Node) Label() string {
 // log 非空时输出显式路径决策（解码方式、节点统计）。
 // 注意：订阅地址本身必须直连可达——先有鸡还是先有蛋，它不走路径代理。
 func LoadSubscription(subURL string, log func(string)) ([]Node, error) {
-	r := FetchURL(subURL, 0, 15_000)
-	if r.Error != "" || r.Status != 200 {
-		return nil, fmt.Errorf("订阅不可达 status=%d err=%s", r.Status, r.Error)
+	// 订阅端点常见抖动（头部超时 / 200 后 body 滴漏卡死）——失败自动重试一次，
+	// 两次都失败才报错。重试日志显式可见。
+	var r Result
+	for attempt := 1; ; attempt++ {
+		r = FetchURL(subURL, 0, 15_000)
+		if r.Error == "" && r.Status == 200 {
+			break
+		}
+		if attempt == 2 {
+			return nil, fmt.Errorf("订阅不可达 status=%d err=%s", r.Status, r.Error)
+		}
+		if log != nil {
+			log(fmt.Sprintf("订阅拉取失败（status=%d err=%s），自动重试…", r.Status, r.Error))
+		}
 	}
 	text, how := decodeSubscription(string(r.Body))
 	if log != nil {
