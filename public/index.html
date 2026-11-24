@@ -195,7 +195,10 @@ async function boot(){
   try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles&&c.profiles.length) state.config=c; } catch(e){}
   try {
     const [m,c]=await Promise.all([fetch('/api/models'),fetch('/api/config')]);
-    if(m.ok){state.dataset=await m.json();state.backend=true;localStorage.setItem(LS_KEY,JSON.stringify(state.dataset));}
+    if(m.ok){const d=await m.json();state.backend=true;
+      if(d&&Array.isArray(d.providers)){state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));}
+      else if(!(state.dataset&&Array.isArray(state.dataset.providers)))
+        showBanner('后端可达但 data/models.json 缺失/为空：已载入内置样本；价目更新后可恢复全量');}
     if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
   } catch(e){}
   if(!state.dataset) state.dataset=FALLBACK_DATA;

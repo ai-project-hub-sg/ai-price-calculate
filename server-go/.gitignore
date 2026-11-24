@@ -8,3 +8,6 @@
 
 # Windows 下 exe 被占用时 go build 的改名残留
 *.exe~
+
+# 运行产物（exe 同目录 data/ 下自动生成）
+/data/

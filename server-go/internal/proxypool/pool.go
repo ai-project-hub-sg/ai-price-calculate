@@ -77,8 +77,14 @@ func StartNode(n Node) (*LocalBox, error) {
 		return nil, err
 	}
 	cfg, err := json.Marshal(map[string]any{
-		"log":      map[string]any{"level": "error"},
-		"inbounds": []any{map[string]any{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "listen_port": port}},
+		"log": map[string]any{"level": "error"},
+		// 显式 DNS：缺省时 v1.14 DNS 客户端在并发交换下 nil 解引用崩进程
+		// （panic 在 sing-box 自有 goroutine，业务层 recover 兜不住）
+		"dns": map[string]any{
+			"servers": []any{map[string]any{"type": "local", "tag": "local"}},
+			"final":   "local",
+		},
+		"inbounds":  []any{map[string]any{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "listen_port": port}},
 		"outbounds": []any{n.Outbound},
 	})
 	if err != nil {
