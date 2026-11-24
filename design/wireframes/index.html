@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>线框 — AI 价格归一化计算器</title>
+<title>线框 — AI 价格归一化计算器 v0.3</title>
 <style>
   * { box-sizing: border-box; margin: 0; font-family: system-ui, "Microsoft YaHei", monospace; }
   body { background: #f5f5f4; color: #333; font-size: 13px; }
@@ -17,32 +17,39 @@
   .scenario { display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
               padding: 8px 16px; background: #e7e5e4; border-bottom: 1px solid #d6d3d1; }
   .scenario label { display: flex; gap: 4px; align-items: center; }
-  .scenario input[type=text], .scenario input[type=number] { width: 72px; padding: 2px 6px; }
+  .scenario input[type=text], .scenario input[type=number] { width: 60px; padding: 2px 6px; }
   .tabs { display: flex; gap: 2px; padding: 8px 16px 0; }
   .tabs button { border-radius: 6px 6px 0 0; border-bottom: none; padding: 6px 18px; }
   .tabs button.on { background: #fff; font-weight: 600; }
-  main { background: #fff; border: 1px solid #d6d3d1; border-top: none; min-height: 480px;
-         padding: 14px 16px; }
+  main { background: #fff; border: 1px solid #d6d3d1; border-top: none; min-height: 520px;
+         padding: 14px 16px; position: relative; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { border: 1px solid #e7e5e4; padding: 5px 8px; text-align: left; }
+  th, td { border: 1px solid #e7e5e4; padding: 5px 8px; text-align: left; vertical-align: top; }
   th { background: #fafaf9; cursor: pointer; user-select: none; }
   td small, th small { color: #78716c; font-size: 11px; }
   .dim { color: #a8a29e; } .hint { color: #78716c; font-size: 12px; margin: 8px 0; }
-  .tree { margin-left: 8px; }
   .node { border: 1px solid #e7e5e4; border-radius: 6px; padding: 8px 12px; margin: 6px 0; }
   .node.lvl2 { margin-left: 28px; background: #fafaf9; }
   .node.lvl3 { margin-left: 56px; background: #f5f5f4; }
   .node .ops { float: right; }
+  .viewsw { float: right; }
+  .drawer { position: absolute; top: 12px; right: 12px; width: 430px; background: #fff;
+            border: 2px solid #57534e; border-radius: 8px; padding: 14px 16px;
+            box-shadow: 0 8px 30px #0003; z-index: 5; }
+  .drawer h3 { font-size: 14px; margin-bottom: 8px; }
+  .drawer .row { margin: 7px 0; display: flex; gap: 8px; align-items: center; }
+  .drawer .row > span:first-child { width: 82px; color: #57534e; }
+  .drawer input[type=text], .drawer select { padding: 2px 6px; }
+  .drawer .box { border: 1px dashed #a8a29e; border-radius: 6px; padding: 8px; margin: 6px 0; }
+  .drawer .foot { text-align: right; margin-top: 10px; }
   .chip { display: inline-block; border: 1px solid #d6d3d1; border-radius: 10px;
-          padding: 1px 8px; margin: 0 4px 4px 0; background: #fff; cursor: pointer; }
+          padding: 1px 8px; margin: 0 4px 4px 0; background: #fff; }
   .chip.on { background: #dbeafe; border-color: #93c5fd; }
-  .banner { background: #fef3c7; border: 1px solid #fbbf24; padding: 6px 12px;
-            margin-bottom: 10px; border-radius: 4px; display: none; }
 </style>
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">低保真线框 v0.2</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">低保真线框 v0.3</small></h1>
   <div class="profiles">
     档案:
     <select><option>主力测算</option><option>低价路线对比</option></select>
@@ -52,63 +59,106 @@
 </header>
 <div class="scenario">
   <label>promptTokens <input type="number" value="128000"></label>
-  <label>配比 输入<input type="text" value="70">% 缓存读<input type="text" value="20">% 输出<input type="text" value="10">%</label>
-  <label>预设 <select><option>编码 3:1</option></select></label>
+  <label>配比 输入<input value="70">% 缓存读<input value="20">% 输出<input value="10">%</label>
+  <label>预设 <select><option>对话均衡 5/3/2</option><option>高缓存读 3/6/1</option><option>长文写作 9/0.5/0.5</option></select></label>
   <label><input type="checkbox"> 非高峰</label>
-  <label title="账户级">☑ 分档计价<input type="checkbox" checked hidden></label>
+  <label>☑ 分档计价<small>(账户级)</small></label>
   <label>汇率 <select><option>自动</option><option>手动</option></select> 7.10 <small>er-api 11-24</small> <button>⟳</button></label>
 </div>
 <div class="tabs" id="tabs">
-  <button class="on" data-t="result">结果表</button>
-  <button data-t="summary">汇总页</button>
+  <button class="on" data-t="result">结果区</button>
   <button data-t="stations">中转站管理</button>
   <button data-t="official">官方价目</button>
   <button data-t="estimate">单次估算</button>
 </div>
 <main>
-  <div class="banner" id="banner">⚠ 后端不可达，已降级 localStorage（示例横幅）</div>
 
   <section id="t-result">
-    <div class="hint">厂商:[全部▾] 系列:[全部▾] 搜索[____] 状态:[active▾]　列=站/提供商；双价=本币/折算；范围外=—</div>
-    <table>
-      <tr><th>模型</th><th>官方价</th><th>示例站A/主商 ↕</th><th>示例站A/备商</th><th>便宜站B/默认</th></tr>
-      <tr><td>Claude Sonnet 5.5<br><small>档≤1M</small></td>
-          <td>$2.11<br><small>¥14.98</small></td><td>$1.69<br><small>¥11.98 · 折0.8</small></td>
-          <td class="dim">— <small>范围外</small></td><td>¥11.86<br><small>$1.67 · 折0.7</small></td></tr>
-      <tr><td>GPT-6.2 Astra<br><small>档&gt;272K</small></td>
-          <td>$8.51<br><small>¥60.42</small></td><td>$6.81<br><small>¥48.33 · 自定档✎</small></td>
-          <td>$5.96<br><small>¥42.31 · 折0.7</small></td><td class="dim">—</td></tr>
-    </table>
-  </section>
-
-  <section id="t-summary" hidden>
     <div class="hint">
-      站[全部▾] 提供商[全部▾] 厂商[全部▾] 系列[全部▾]　共 214 行　两价格列各自可排序
+      <span class="viewsw">视图: <label><input type="radio" name="v" checked> 矩阵(当前档案)</label>
+      <label><input type="radio" name="v"> 汇总(全部档案)</label></span>
+      厂商:[全部▾] 系列:[全部▾] 搜索[____] 状态:[active▾]
+      <br>每格两行：<b>上=不换汇（模型官方币种）</b>，<b>下=换汇（恒 ¥人民币）</b>；范围外=—
     </div>
     <table>
-      <tr><th>配置</th><th>站</th><th>提供商</th><th>厂商</th><th>系列</th><th>模型</th><th>不换汇 ↕</th><th>换汇 ↓</th></tr>
-      <tr><td>主力测算</td><td>便宜站B</td><td>默认商</td><td>moonshot</td><td>kimi-k3</td><td>kimi-k3</td><td>¥29.50</td><td>$4.41</td></tr>
-      <tr><td>低价对比</td><td>便宜站B</td><td>默认商</td><td>deepseek</td><td>v4</td><td>v4-pro</td><td>$2.30</td><td>¥15.37</td></tr>
-      <tr><td>主力测算</td><td>示例站A</td><td>批发上游</td><td>anthropic</td><td>sonnet</td><td>5.5</td><td>$1.69</td><td>¥11.98</td></tr>
+      <tr><th>模型</th><th>官方价</th><th>示例站A/主商 ↕</th><th>示例站A/批发商</th><th>便宜站B/默认</th></tr>
+      <tr><td>Claude Sonnet 5.5<br><small>档≤1M</small></td>
+          <td>$2.11<br><small>¥14.98 · 官方</small></td>
+          <td>$1.69<br><small>¥11.98 · 折0.8</small></td>
+          <td class="dim">— <small>范围外</small></td>
+          <td>$1.48<br><small>¥10.49 · 折0.7</small></td></tr>
+      <tr><td>GPT-6.2 Astra<br><small>档&gt;272K</small></td>
+          <td>$8.51<br><small>¥60.42 · 官方</small></td>
+          <td>$6.81<br><small>¥48.33 · 自定档✎</small></td>
+          <td>$5.96<br><small>¥42.31 · 折0.7</small></td>
+          <td class="dim">—</td></tr>
+      <tr><td>Kimi K3 <small>· CNY计价</small></td>
+          <td>¥48.00<br><small>¥48.00 · 官方</small></td>
+          <td>¥33.60<br><small>¥33.60 · 折0.7</small></td>
+          <td class="dim">—</td>
+          <td>¥38.40<br><small>¥38.40 · 折0.8</small></td></tr>
     </table>
+    <div class="hint">汇总视图（切换后）：行=配置×站×提供商×范围内模型；列含 配置/站/提供商/厂商/系列/模型/不换汇↕/换汇(¥)↓ + 四筛选器。</div>
   </section>
 
   <section id="t-stations" hidden>
     <button class="primary">＋新建站点</button>
-    <div class="tree">
-      <div class="node lvl1"><b>▼ 示例站 A</b>　USD · 默认折0.8 · ☑分档 · ☑启用
-        <span class="ops"><button>编辑</button><button>⧉复制</button><button>🗑</button></span></div>
-      <div class="node lvl2"><b>▼ 提供商: 示例站 A</b>（默认商）· 折:继承 · ☑分档 · ☑启用
-        <br><small>范围: anthropic, google / 全部系列</small>
-        <span class="ops"><button>编辑</button><button>⧉</button><button disabled>🗑</button></span></div>
-      <div class="node lvl3">覆盖: gpt-6.2-astra · 折0.6 · ☑分档
-        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
-      <div class="node lvl3">覆盖: claude-opus-5-5 · 自定价(2档)✎
-        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
-      <div class="node lvl2"><b>▶ 提供商: 批发上游</b> · 折0.65 · ☑分档 · ☐停用
-        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
-      <div class="node lvl1"><b>▼ 便宜站 B</b>　CNY · 默认折0.7 · ☑分档 · ☑启用
-        <span class="ops"><button>编辑</button><button>⧉复制</button><button>🗑</button></span></div>
+    <div class="node lvl1"><b>▼ 示例站 A</b>　默认折0.8 · ☑分档 · ☑启用
+      <span class="ops"><button id="btnEditStation">编辑</button><button>⧉复制</button><button>🗑</button></span></div>
+    <div class="node lvl2"><b>▼ 提供商: 示例站 A</b>（默认商）· 折:继承 · ☑分档 · ☑启用
+      <br><small>范围: anthropic, google / 全部系列</small>
+      <span class="ops"><button id="btnEditProv">编辑</button><button>⧉</button><button disabled>🗑</button></span></div>
+    <div class="node lvl3">覆盖: gpt-6.2-astra · 折0.6 · ☑分档
+      <span class="ops"><button id="btnEditModel">编辑</button><button>⧉</button><button>🗑</button></span></div>
+    <div class="node lvl3">覆盖: claude-opus-5-5 · 自定价(2档)✎
+      <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
+    <div class="node lvl2"><b>▶ 提供商: 批发上游</b> · 折0.65 · ☑分档 · ☐停用
+      <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
+    <div class="node lvl1"><b>▼ 便宜站 B</b>　默认折0.7 · ☑分档 · ☑启用
+      <span class="ops"><button>编辑</button><button>⧉复制</button><button>🗑</button></span></div>
+
+    <!-- 站点编辑抽屉 -->
+    <div class="drawer" id="dStation" hidden>
+      <h3>编辑站点</h3>
+      <div class="row"><span>名称</span><input type="text" value="示例站 A"></div>
+      <div class="row"><span>URL</span><input type="text" value="https://…"> <small>备注用</small></div>
+      <div class="row"><span>默认折扣</span><input type="text" value="0.8" size="6"> <small>0&lt;x≤10</small></div>
+      <div class="row"><span>分档计价</span><input type="checkbox" checked></div>
+      <div class="row"><span>启用</span><input type="checkbox" checked></div>
+      <div class="row"><span>备注</span><input type="text"></div>
+      <div class="hint">改名时默认提供商若仍与旧站名同名则联动改名</div>
+      <div class="foot"><button>取消</button> <button class="primary">保存</button></div>
+    </div>
+
+    <!-- 提供商编辑抽屉 -->
+    <div class="drawer" id="dProv" hidden>
+      <h3>编辑提供商</h3>
+      <div class="row"><span>名称</span><input type="text" value="批发上游"></div>
+      <div class="row"><span>启用/分档</span><input type="checkbox" checked>启用 <input type="checkbox" checked>分档计价</div>
+      <div class="row"><span>默认折扣</span><select><option>继承站默认(0.8)</option><option>自填</option></select><input type="text" value="0.65" size="5"></div>
+      <div class="box"><b>提供范围</b>（范围外不产价）<br>
+        <label><input type="radio" name="sc" checked>按厂商+系列</label>
+        <label><input type="radio" name="sc">精确模型白名单</label><br>
+        厂商: <span class="chip on">anthropic</span><span class="chip on">google</span><span class="chip">xai</span><span class="chip">openai</span><br>
+        系列(级联): <span class="chip on">claude-sonnet</span><span class="chip">claude-opus</span><span class="chip on">gemini-flash</span>
+      </div>
+      <div class="box"><b>厂商级分档开关</b><br>anthropic ☑　google ☐<small>(关=该厂商全按基础档)</small></div>
+      <div class="box"><b>模型覆盖</b> <button>＋添加</button><br><small>已有 2 条（gpt-6.2-astra 折0.6 / claude-opus-5-5 自定价）</small></div>
+      <div class="foot"><button>取消</button> <button class="primary">保存</button></div>
+    </div>
+
+    <!-- 模型覆盖编辑抽屉 -->
+    <div class="drawer" id="dModel" hidden>
+      <h3>编辑模型覆盖</h3>
+      <div class="row"><span>模型</span><select><option>gpt-6.2-astra</option></select></div>
+      <div class="row"><span>计价方式</span><label><input type="radio" name="pm" checked>折扣</label><input type="text" value="0.6" size="5">
+        <label><input type="radio" name="pm">自定义基础价</label></div>
+      <div class="box"><b>tiers</b>（币种=模型官方 USD）<br>
+        ≤272K: 输入[5.0] 缓存[0.25] 输出[25]<br>
+        无上限: 输入[10] 缓存[0.5] 输出[37.5]　<button>＋加档</button>
+      </div>
+      <div class="row"><span>分档计价</span><input type="checkbox" checked></div>
+      <div class="foot"><button>取消</button> <button class="primary">保存</button></div>
     </div>
   </section>
 
@@ -127,12 +177,17 @@
   </section>
 </main>
 <script>
-  document.getElementById('tabs').addEventListener('click', e => {
+  const tabs = document.getElementById('tabs');
+  tabs.addEventListener('click', e => {
     if (e.target.dataset.t) {
       document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
       document.querySelectorAll('main section').forEach(s => s.hidden = s.id !== 't-' + e.target.dataset.t);
     }
   });
+  const show = id => { document.querySelectorAll('.drawer').forEach(d => d.hidden = true); document.getElementById(id).hidden = false; };
+  btnEditStation.onclick = () => show('dStation');
+  btnEditProv.onclick = () => show('dProv');
+  btnEditModel.onclick = () => show('dModel');
 </script>
 </body>
 </html>

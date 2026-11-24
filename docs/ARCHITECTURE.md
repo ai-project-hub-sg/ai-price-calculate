@@ -104,7 +104,7 @@ ai-price-calculate/
     "tieredPricing": { "enabled": true },     // ① 账户级分档开关
     "stations": [{
       "id": "st-…", "name": "示例站 A", "url": "",
-      "currency": "USD",                      // 该站计费币种
+      // 站点无币种属性：币种只挂在模型官方价上（USD/CNY 见 models.json provider.currency）
       "enabled": true, "defaultDiscount": 0.8, "notes": "",
       "tieredPricing": { "enabled": true },   // ② 站级
       "providers": [{                         // ≥1 个；建站自动生成与站同名的默认提供商
@@ -126,6 +126,7 @@ ai-price-calculate/
           "tieredPricing": { "enabled": true },
           "basePrice": { "tiers": [{ "upToTokens": 272000, "input": 5, "output": 25, "cacheRead": 0.25 },
                                    { "upToTokens": null, "input": 10, "output": 37.5, "cacheRead": 0.5 }] }
+          // basePrice 币种 = 该模型官方币种（跟随模型，不单独设置）
         }]
       }]
     }],
