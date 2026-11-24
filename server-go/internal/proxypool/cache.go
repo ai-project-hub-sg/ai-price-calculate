@@ -22,6 +22,8 @@ type Cache struct {
 	subURL   string
 	subNodes []Node // 已解析节点列表（订阅本身也可能拉取失败/超时，缓存兜底）
 	subAt    time.Time
+	testRes  []NodeTestResult // 上次「测试节点」完整结果（秒回用）
+	testAt   time.Time
 	nodes    map[string]nodeStatus // key = Key(node)
 }
 
@@ -59,9 +61,37 @@ func (c *Cache) MarkSub(subURL string, nodes []Node) {
 	if c.subURL != subURL {
 		c.subURL = subURL
 		c.nodes = map[string]nodeStatus{}
+		c.testRes, c.testAt = nil, time.Time{}
 	}
 	c.subNodes = append([]Node(nil), nodes...)
 	c.subAt = time.Now()
+}
+
+// MarkTestDone 记录一次完整「测试节点」的结果快照。
+func (c *Cache) MarkTestDone(subURL string, res []NodeTestResult) {
+	if subURL == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.subURL != subURL {
+		c.subURL = subURL
+		c.nodes = map[string]nodeStatus{}
+		c.subNodes, c.subAt = nil, time.Time{}
+	}
+	c.testRes = append([]NodeTestResult(nil), res...)
+	c.testAt = time.Now()
+}
+
+// CachedTest TTL 内的测试结果快照（测试按钮秒回）；过期/换订阅返回 false。
+func (c *Cache) CachedTest(subURL string) ([]NodeTestResult, time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if subURL == "" || subURL != c.subURL || len(c.testRes) == 0 ||
+		time.Since(c.testAt) >= c.ttl {
+		return nil, time.Time{}, false
+	}
+	return append([]NodeTestResult(nil), c.testRes...), c.testAt, true
 }
 
 // Key 节点稳定标识：outbound 配置序列化（map key 有序 → 确定性）。
@@ -102,6 +132,7 @@ func (c *Cache) Mark(subURL string, n Node, ok bool, ms int, errMsg string) {
 		c.subURL = subURL
 		c.nodes = map[string]nodeStatus{}
 		c.subNodes, c.subAt = nil, time.Time{}
+		c.testRes, c.testAt = nil, time.Time{}
 	}
 	c.nodes[Key(n)] = nodeStatus{ok: ok, ms: ms, err: errMsg, at: time.Now()}
 }

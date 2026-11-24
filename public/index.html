@@ -109,7 +109,8 @@
       <label class="hint">代理订阅 <input type="text" id="subUrl" placeholder="留空=仅直连"
         style="width:260px" title="vless+reality / hysteria2 节点订阅地址；价目源直连失败时经节点池重试，需后端支持"></label>
       <button id="subSave" title="写入 config.proxySubscription">保存</button>
-      <button id="subTest" title="拉取订阅并逐节点做连通性探测（不抓取价目）">测试节点</button>
+      <button id="subTest" title="拉取订阅并逐节点做连通性探测（不抓取价目）；1h 内测过则回缓存结果">测试节点</button>
+      <button id="subTestForce" title="忽略 1h 缓存，重新探测全部节点">强制重测</button>
       <span class="hint" id="subMsg"></span>
       <span class="hint" id="updInfo"></span>
       <input type="text" id="offSearch" placeholder="搜索模型" style="margin-left:auto">
@@ -911,12 +912,12 @@ function bindGlobal(){
       setTimeout(()=>{if($('#subMsg').textContent==='已保存 ✓')subMsg('');},3000);
     }catch(e){subMsg('保存失败: '+e.message,'danger');}
   };
-  $('#subTest').onclick=async()=>{
-    const btn=$('#subTest'),box=$('#updStatus');
+  const runSubTest=async(force)=>{
+    const btn=force?$('#subTestForce'):$('#subTest'),box=$('#updStatus');
     const url=$('#subUrl').value.trim();
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
       '⚠ 后端不可达（/api/models 请求失败）'));return;}
-    if(!url){subMsg('请先填订阅地址','danger');return;}
+    // 订阅输入可空：Go 回退已保存 config，Python 用 v2rayN 节点源（与订阅无关）
     const oldTxt=btn.textContent;
     btn.disabled=true;btn.textContent='测试中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
@@ -924,7 +925,7 @@ function bindGlobal(){
     const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
     try{
       const r=await fetch('/api/nodes/test',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({url})});
+        body:JSON.stringify({url,force})});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const {jobId}=await r.json();
       const t0=Date.now();
@@ -937,7 +938,8 @@ function bindGlobal(){
           clearInterval(poll);done();
           if(j.status==='done'&&j.report){
             const p=j.report;
-            log(`✓ 共 ${p.total} 节点 · 已探测 ${p.probed} · 可用 ${p.usable}`,
+            log(`✓ 共 ${p.total} 节点 · 已探测 ${p.probed} · 可用 ${p.usable}`+
+              (p.cached?'（缓存结果 · 点「强制重测」跑新的）':''),
               p.usable?'':'danger');
             for(const n of (p.results||[]))
               log(`　${n.ok?'✓':'✗'} ${n.name}（${n.kind}）${n.ok?' '+n.ms+'ms':' '+(n.error||'')}`,
@@ -947,6 +949,8 @@ function bindGlobal(){
       },1500);
     }catch(e){done();log('✗ 请求失败: '+e.message);}
   };
+  $('#subTest').onclick=()=>runSubTest(false);
+  $('#subTestForce').onclick=()=>runSubTest(true);
   $('#updBtn').onclick=async()=>{
     const btn=$('#updBtn'),box=$('#updStatus');
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},

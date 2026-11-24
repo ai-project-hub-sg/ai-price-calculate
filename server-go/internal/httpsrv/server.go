@@ -300,16 +300,17 @@ func (s *Server) hNodesTest(w http.ResponseWriter, r *http.Request) {
 	if v, ok := body["maxNodes"].(float64); ok && v > 0 {
 		maxNodes = int(v)
 	}
+	force, _ := body["force"].(bool)
 	id := randID()
 	j := &job{Status: "running"}
 	s.mu.Lock()
 	s.jobs[id] = j
 	s.mu.Unlock()
-	go s.runNodesTest(id, sub, maxNodes)
+	go s.runNodesTest(id, sub, maxNodes, force)
 	writeJSON(w, 200, map[string]any{"jobId": id})
 }
 
-func (s *Server) runNodesTest(id, sub string, maxNodes int) {
+func (s *Server) runNodesTest(id, sub string, maxNodes int, force bool) {
 	logf := func(m string) {
 		s.mu.Lock()
 		j := s.jobs[id]
@@ -328,6 +329,29 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int) {
 			j.Error = err.Error()
 		} else {
 			j.Report = rep
+		}
+	}
+	// 1h 内测过 → 直接回缓存结果（report.cached 标记），不重复全池探测；
+	// 要跑新的用「强制重测」（force=true）。
+	if !force {
+		if res, at, ok := s.nodeCache.CachedTest(sub); ok {
+			usable := 0
+			for _, r := range res {
+				if r.OK {
+					usable++
+				}
+			}
+			total := len(s.nodeCache.StaleSubNodes(sub))
+			if total == 0 {
+				total = len(res)
+			}
+			logf(fmt.Sprintf("缓存命中：%s 前的探测结果（1h 内有效），重跑请点「强制重测」",
+				time.Since(at).Round(time.Second)))
+			finish("done", map[string]any{
+				"total": total, "probed": len(res), "usable": usable,
+				"results": res, "cached": true,
+			}, nil)
+			return
 		}
 	}
 	nodes, err := proxypool.LoadSubscription(sub, logf)
@@ -359,6 +383,7 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int) {
 			usable++
 		}
 	}
+	s.nodeCache.MarkTestDone(sub, results) // 结果快照入缓存：1h 内再点测试秒回
 	logf(fmt.Sprintf("完成：%d/%d 节点可用", usable, len(results)))
 	finish("done", map[string]any{
 		"total": len(nodes), "probed": len(results),

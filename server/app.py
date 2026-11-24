@@ -9,6 +9,7 @@
     PUT  /api/config           → 写回 data/config.json
     GET  /api/fx               → {rate, source, fetchedAt, cached}
     POST /api/pricing/update   → {"jobId": "..."} 后台跑 fetcher.update
+    POST /api/nodes/test       → {"jobId": "..."} 后台跑节点连通性探测
     GET  /api/jobs/<id>        → {"status": running|done|error, "report": ...}
 """
 from __future__ import annotations
@@ -87,6 +88,41 @@ def _run_update(job_id: str, providers: list[str] | None, max_nodes: int):
         status, err = "done", None
     except Exception as e:
         rep, status, err = None, "error", f"{type(e).__name__}: {e}"
+    with _JOBS_LOCK:
+        _JOBS[job_id].update({"status": status, "report": rep,
+                              "log": lines[-200:], "error": err})
+
+
+def _run_nodes_test(job_id: str, force: bool, max_nodes: int):
+    """POST /api/nodes/test 后台任务：v2rayN 候选节点连通性探测。
+    1h 内测过 → 直接回缓存快照（cached 标记），force=True 强制重跑。"""
+    lines: list[str] = []
+    rep, status, err = None, "done", None
+    try:
+        cached = None if force else nodepool.cache_test_results()
+        if cached:
+            res, at = cached
+            usable = sum(1 for r in res if r["ok"])
+            lines.append(f"缓存命中：{int(time.time() - at)}s 前的探测结果"
+                         "（1h 内有效），重跑请点「强制重测」")
+            rep = {"total": len(nodepool._load_candidates()),
+                   "probed": len(res), "usable": usable,
+                   "results": res, "cached": True}
+        else:
+            nodes = nodepool._load_candidates()
+            probed = min(max_nodes, len(nodes)) if max_nodes > 0 else len(nodes)
+            lines.append(f"候选节点 {len(nodes)} 个，探测前 {probed}"
+                         f"（连通性目标 {nodepool.PROBE_URL}）…")
+            res = nodepool.test_nodes(
+                nodes, max_nodes=max_nodes,
+                on_progress=lambda p: lines.append(
+                    f"  已测 {p['tested']}/{p['total']}"))
+            usable = sum(1 for r in res if r["ok"])
+            lines.append(f"完成：{usable}/{len(res)} 节点可用")
+            rep = {"total": len(nodes), "probed": len(res),
+                   "usable": usable, "results": res}
+    except Exception as e:
+        status, err = "error", f"{type(e).__name__}: {e}"
     with _JOBS_LOCK:
         _JOBS[job_id].update({"status": status, "report": rep,
                               "log": lines[-200:], "error": err})
@@ -189,7 +225,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if self.path.split("?")[0] == "/api/pricing/update":
+        path = self.path.split("?")[0]
+        if path == "/api/pricing/update":
             body = self._body()
             job_id = uuid.uuid4().hex[:8]
             with _JOBS_LOCK:
@@ -197,6 +234,17 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(
                 target=_run_update,
                 args=(job_id, body.get("providers"), int(body.get("maxNodes", 25))),
+                daemon=True).start()
+            self._json({"jobId": job_id})
+        elif path == "/api/nodes/test":
+            body = self._body()
+            job_id = uuid.uuid4().hex[:8]
+            with _JOBS_LOCK:
+                _JOBS[job_id] = {"status": "running", "report": None, "log": []}
+            threading.Thread(
+                target=_run_nodes_test,
+                args=(job_id, bool(body.get("force")),
+                      int(body.get("maxNodes", 25))),
                 daemon=True).start()
             self._json({"jobId": job_id})
         else:

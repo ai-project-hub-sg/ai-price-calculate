@@ -6,7 +6,7 @@
 ## 当前状态
 
 - 分支 `feat/go-port`：`f8250f0`（主体移植）、`9869c5e`（一致性测试+文档）、`e79fbee`（节点测试 UX）、`04e11f9`（DNS panic 修复）、`c8d66e7`（parse-empty 三层修复）
-- **节点缓存已上线**（`proxypool/cache.go`，进程内 1h TTL）：①已解析订阅节点列表缓存（订阅端点会超时，MarkSub/SubNodes/StaleSubNodes，拉失败回退过期副本——测试端点和更新都已接）②节点可用性缓存（Mark/Usable/Absorb）③键=节点 outbound 序列化，换订阅整体失效。「测试节点」和「价目更新」探测结果都写入；更新时温路径直接复用（实测：刚测完 15/25 → 更新 anthropic 跳过重拉+全探测，首个缓存节点秒中合并 18）。`LoadSubscription` 失败自动重试一次（端点常见头部超时/200 后 body 滴漏两种抖法，实测都出现过）。**Python 侧未实现——有意分歧点，待补。**
+- **节点缓存已上线**（`proxypool/cache.go`，进程内 1h TTL）：①已解析订阅节点列表缓存（订阅端点会超时，MarkSub/SubNodes/StaleSubNodes，拉失败回退过期副本——测试端点和更新都已接）②节点可用性缓存（Mark/Usable/Absorb）③键=节点 outbound 序列化，换订阅整体失效。「测试节点」和「价目更新」探测结果都写入；更新时温路径直接复用（实测：刚测完 15/25 → 更新 anthropic 跳过重拉+全探测，首个缓存节点秒中合并 18）。`LoadSubscription` 失败自动重试一次（端点常见头部超时/200 后 body 滴漏两种抖法，实测都出现过）。**Python 侧已同步**：`nodepool._NODE_CACHE`（index_id 键）+ `test_nodes()` + `app.py /api/nodes/test`——v2rayN 节点源无订阅概念，订阅缓存/重试属结构性分歧不移植。另修 Python 原生竞态：`find_working_proxy` 曾把 live `pending` dict 传给并发 `probe_node`（兄弟线程 pop 会炸迭代），改为传快照。「测试节点」语义变更：默认回 1h 缓存（`cached:true` 秒回），强制重测走 `force:true`——前端有对应按钮。
 - 全部 `go test ./...` 绿：7 解析器 vs Python 基准、merge 三分支 parity、写回零 diff 往返、订阅解析 5 项、缓存 4 项
 - 实测通过：直连合并、订阅拉取（真实 37 节点订阅）、节点池探测、测试端点端到端
 - 运行中的实例：`aipc-server.exe --port 8787 --data ../data`（embed 前端已含订阅区按钮）
