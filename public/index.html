@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.13 · c2d7cd6</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.14 · 26b348e</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -345,7 +345,7 @@ function pickModels(title,cb){
     if(sel.size)chips.append(`已选 ${sel.size}: `);
     for(const id of sel)chips.append(h('span',{class:'chip on',onclick:()=>{sel.delete(id);refreshAll();}},id+' ×'));
     ok.textContent=`确定(${sel.size})`;};
-  const refreshAll=()=>{upds.forEach(f=>f());refreshChips();};
+  const refreshAll=()=>{refreshList();refreshChips();};
   const triBox=ids=>{ // 三态组 checkbox
     const cb=h('input',{type:'checkbox'});
     const upd=()=>{const n=ids.filter(i=>sel.has(i)).length;
@@ -371,13 +371,13 @@ function pickModels(title,cb){
         const sIds=ms.map(m=>m.id);
         if(q&&!sIds.some(id=>id.includes(q)))continue;
         const st=triBox(sIds);upds.push(st.upd);
-        body.append(h('div',{style:'margin-left:20px;font-weight:500'},st.el,` ${s}`));
+        const line=h('div',{style:'margin-left:20px'},st.el,h('span',{style:'font-weight:500'},` ${s} `));
         for(const m of ms){
           if(q&&!m.id.includes(q))continue;
-          const cb=h('input',{type:'checkbox',checked:sel.has(m.id)});
-          cb.onchange=()=>{cb.checked?sel.add(m.id):sel.delete(m.id);refreshAll();};
-          body.append(h('label',{style:'display:block;margin-left:40px;cursor:pointer'},cb,` ${m.id} `,h('small',{class:'dim'},m.name||'')));
+          line.append(h('span',{class:'chip'+(sel.has(m.id)?' on':''),title:m.name||'',
+            onclick:()=>{sel.has(m.id)?sel.delete(m.id):sel.add(m.id);refreshAll();}},m.id));
         }
+        body.append(line);
       }
     }
     if(!any)list.append(h('div',{class:'dim'},'无匹配'));
@@ -388,7 +388,7 @@ function pickModels(title,cb){
   const d=$('#drawer');d.innerHTML='';d.hidden=false;
   refreshList();refreshChips();
   d.append(h('h3',{},title+'（可多选）'),
-    h('div',{class:'row'},qIn,h('small',{class:'dim'},'勾厂商=全选其下所有模型；▣=半选')),
+    h('div',{class:'row'},qIn,h('small',{class:'dim'},'勾厂商/系列框=全选；点模型chip=单选；▣=半选')),
     list,chips,
     h('div',{class:'foot'},h('button',{onclick:()=>d.hidden=true},'取消'),ok));
   qIn.focus();
@@ -493,9 +493,10 @@ function editProvider(st,pr){
   const scope=JSON.parse(JSON.stringify(pr.scope||{vendorIds:[],series:[],modelIds:[]}));
   const sws=JSON.parse(JSON.stringify(pr.vendorSwitches||[]));
   const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关'));
-  const renderVS=()=>{
-    vs.innerHTML='';vs.append(h('b',{},'厂商级分档开关'+(scope.vendorIds.length?'':'（未选厂商时无项）')));
-    for(const vid of scope.vendorIds){
+  const renderVS=vids=>{
+    vids=vids||Object.keys(scope.vendors||{});
+    vs.innerHTML='';vs.append(h('b',{},'厂商级分档开关'+(vids.length?'':'（未选厂商时无项）')));
+    for(const vid of vids){
       const cur=sws.find(v=>v.vendorId===vid);
       vs.append(h('label',{},h('input',{type:'checkbox',checked:!cur||cur.tieredPricing?.enabled!==false,
         onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
