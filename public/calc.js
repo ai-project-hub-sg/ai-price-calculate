@@ -78,9 +78,18 @@ function allModels(dataset) {
 
 // ---------- 提供范围 ----------
 
+/**
+ * 范围=并集：(厂商×系列命中) ∪ (白名单成员)。
+ * - 全不选 = 全量；只勾白名单 = 仅白名单；
+ * - 厂商/系列 + 白名单 = 两者并集（如 openai 全部 + claude 几个模型）。
+ */
 function inScope(scope, model, vendorId) {
   if (!scope) return true;
-  if (scope.modelIds && scope.modelIds.length) return scope.modelIds.includes(model.id);
+  const wl = scope.modelIds || [];
+  const hasVS = (scope.vendorIds && scope.vendorIds.length) || (scope.series && scope.series.length);
+  if (wl.includes(model.id)) return true;
+  if (wl.length && !hasVS) return false;          // 纯白名单模式
+  if (!hasVS) return true;                        // 全不选=全量
   const vOk = !scope.vendorIds || !scope.vendorIds.length || scope.vendorIds.includes(vendorId);
   const sOk = !scope.series || !scope.series.length || scope.series.includes(classifySeries(model.id));
   return vOk && sOk;

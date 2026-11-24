@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.10 · 8372a89</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.11 · d90deac</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -307,8 +307,8 @@ function renderStations(){
       sw(st.tieredPricing?.enabled,'分档'),' ',st.enabled?'☑启用':'☐停用'],
       [['编辑',()=>editStation(st)],['⧉复制',()=>{pf.stations.push(C.cloneNode(st,'station'));render();}],['🗑',()=>del(`删除站点「${st.name}」？`,()=>{pf.stations=pf.stations.filter(x=>x!==st);render();})]],!st.enabled));
     for(const pr of st.providers||[]){
-      const scope=pr.scope?.modelIds?.length?`白名单 ${pr.scope.modelIds.length} 模型`:
-        `${pr.scope?.vendorIds?.length?pr.scope.vendorIds.join(','):'全部厂商'}/${pr.scope?.series?.length?pr.scope.series.join(','):'全部系列'}`;
+      const base=`${pr.scope?.vendorIds?.length?pr.scope.vendorIds.join(','):'全部厂商'}/${pr.scope?.series?.length?pr.scope.series.join(','):'全部系列'}`;
+      const scope=pr.scope?.modelIds?.length?`${base} +白名单${pr.scope.modelIds.length}`:base;
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
@@ -444,12 +444,8 @@ function editProvider(st,pr){
       sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);renderScope();}},s));});
     mList.innerHTML='';
     const wl=scope.modelIds||[];
-    // 白名单非空时接管范围：厂商/系列置灰提示
-    const dimVS=wl.length>0;
-    vChips.style.opacity=sChips.style.opacity=dimVS?'0.45':'1';
-    vChips.style.pointerEvents=sChips.style.pointerEvents=dimVS?'none':'';
-    if(dimVS)mList.append(h('div',{style:'color:#b91c1c;font-size:12px'},`⚠ 精确白名单生效中（${wl.length} 个模型）——上方厂商/系列选择不生效`));
-    else mList.append(h('div',{class:'dim',style:'font-size:12px'},'可选：精确到具体模型（白名单非空时将覆盖厂商/系列选择）'));
+    mList.append(h('div',{class:'dim',style:'font-size:12px'},
+      wl.length?`额外包含 ${wl.length} 个模型（与上方厂商×系列取并集）`:'可选：白名单=在厂商×系列范围外额外包含的模型'));
     wl.forEach(id=>mList.append(h('span',{class:'chip on',title:'点击移除',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},id+' ×')));
     mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
       ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});renderScope();})},'＋选择模型'));
