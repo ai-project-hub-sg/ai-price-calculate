@@ -26,10 +26,10 @@ function pickTierIndex(tiers, promptTokens) {
 }
 
 function normalizeMix(mix) {
-  const i = +mix.input || 0, c = +mix.cacheRead || 0, o = +mix.output || 0;
-  const s = i + c + o;
+  const i = +mix.input || 0, c = +mix.cacheRead || 0, w = +mix.cacheWrite || 0, o = +mix.output || 0;
+  const s = i + c + w + o;
   if (s <= 0) throw new Error("配比合计必须大于 0");
-  return { input: i / s, cacheRead: c / s, output: o / s };
+  return { input: i / s, cacheRead: c / s, cacheWrite: w / s, output: o / s };
 }
 
 function convert(amount, fromCurrency, rate) {
@@ -128,14 +128,23 @@ function resolveUnitPrices(entry, ctx) {
   const input = tier.input * peak;
   const output = tier.output * peak;
   const cacheRead = (tier.cacheRead != null ? tier.cacheRead : tier.input) * peak; // 无缓存价→按 input
+  const cacheWrite5m = cacheWritePrice(tier, "5m", tier.input) * peak;
+  const cacheWrite1h = cacheWritePrice(tier, "1h", null);
   return {
     inScope: true,
-    input, output, cacheRead,
+    input, output, cacheRead, cacheWrite5m,
+    cacheWrite1h: cacheWrite1h == null ? null : cacheWrite1h * peak,
     discount, tierIndex: ti,
     tierLabel: tiers.length > 1 ? tierLabel(tier) : "—",
     source, tiered,
     noCachePrice: tier.cacheRead == null,
   };
+}
+
+function cacheWritePrice(tier, ttl, fallback) {
+  const w = (tier.cacheWrites || []).find(x => x.ttl === ttl);
+  if (w) return w.price;
+  return fallback;
 }
 
 function tierLabel(tier) {
@@ -159,7 +168,7 @@ function tierLabelOf(tiers, idx) {
 
 function blendedPrice(u, mix) {
   const m = normalizeMix(mix);
-  return (u.input * m.input + u.cacheRead * m.cacheRead + u.output * m.output) * u.discount;
+  return (u.input * m.input + u.cacheRead * m.cacheRead + u.cacheWrite5m * m.cacheWrite + u.output * m.output) * u.discount;
 }
 
 // ---------- 结果行生成 ----------
@@ -221,16 +230,21 @@ function officialPrice(entry, profile, rate) {
   const m = normalizeMix(sc.mix || { input: 1, cacheRead: 0, output: 0 });
   const t = pickTier(entry.model.tiers, +sc.promptTokens || 0);
   const cr = t.cacheRead != null ? t.cacheRead : t.input;
-  const p = t.input * m.input + cr * m.cacheRead + t.output * m.output;
+  const cw = cacheWritePrice(t, "5m", t.input);
+  const p = t.input * m.input + cr * m.cacheRead + cw * m.cacheWrite + t.output * m.output;
   return convert(p, entry.vendor.currency || "USD", rate);
 }
 
 // ---------- 单次估算 ----------
 
-function estimateRequest(u, usage) {
-  // usage: {input, cacheRead, output} 实际 tokens；档位已由调用方按 promptTokens 判好
+function estimateRequest(u, usage, opts) {
+  // usage: {input, cacheRead, cacheWrite, output} 实际 tokens；档位已由调用方按 promptTokens 判好
+  // opts.cacheTTL: '5m'(默认) | '1h'；模型无 1h 价时回退 5m 价
+  const cw = opts && opts.cacheTTL === "1h" && u.cacheWrite1h != null
+    ? u.cacheWrite1h : u.cacheWrite5m;
   return ((+usage.input || 0) * u.input
         + (+usage.cacheRead || 0) * u.cacheRead
+        + (+usage.cacheWrite || 0) * cw
         + (+usage.output || 0) * u.output) / 1e6 * u.discount;
 }
 
@@ -317,6 +331,149 @@ function renameStation(station, newName) {
   }
 }
 
+// ---------- 分档编辑（操作符 → upToTokens 转换 + 校验） ----------
+
+/**
+ * rows: [{op:'<'|'≤'|'>'|'≥'|'all', value:number|null, input, cacheRead, output}]
+ * 规则：非末档仅 </≤；末档可 >/≥（与上一档边界必须衔接）或 all（全部）；
+ * 禁止重叠与缺漏。返回 {errors:[], tiers:[]}。
+ */
+function tiersFromEditor(rows) {
+  const errors = [], tiers = [];
+  if (!rows.length) return { errors: ["至少保留 1 档"], tiers };
+  const px = (r) => ({
+    input: +r.input || 0,
+    output: +r.output || 0,
+    cacheRead: r.cacheRead === "" || r.cacheRead == null ? null : +r.cacheRead,
+  });
+  rows.forEach((r, i) => {
+    const last = i === rows.length - 1, n = i + 1;
+    const v = +r.value;
+    if (r.op !== "all" && !(v > 0)) { errors.push(`第${n}档：阈值须为正数`); return; }
+    if (r.op === "all") {
+      if (!last) errors.push(`第${n}档「全部」只能出现在最后一档，其后的档位不可达`);
+      tiers.push({ upToTokens: null, ...px(r) });
+    } else if (r.op === "<" || r.op === "≤") {
+      tiers.push({ upToTokens: r.op === "<" ? v - 1 : v, ...px(r) });
+      if (last) errors.push(`最后一档后存在缺漏：缺少 ${r.op === "<" ? "≥" : ">"}${v} 的档（或把本档改为「全部」）`);
+    } else { // > 或 ≥
+      if (!last) errors.push(`第${n}档「${r.op}」只能用于最后一档，否则后续档全部不可达`);
+      if (i === 0) errors.push(`第${n}档：首档不能用「${r.op}」，低区间没有覆盖`);
+      const bound = r.op === ">" ? v : v - 1;
+      const prev = tiers[tiers.length - 1];
+      if (prev && prev.upToTokens != null && prev.upToTokens !== bound) {
+        errors.push(prev.upToTokens > bound
+          ? `第${n}档与前一档重叠：前档上界 ${prev.upToTokens}，本档从 ${r.op}${v} 开始`
+          : `第${n}档与前一档有缺漏：${prev.upToTokens} 到 ${bound} 之间没有覆盖`);
+      }
+      tiers.push({ upToTokens: null, ...px(r) });
+    }
+  });
+  for (let i = 1; i < tiers.length; i++) {
+    const a = tiers[i - 1].upToTokens, b = tiers[i].upToTokens;
+    if (a != null && b != null && b <= a)
+      errors.push(`第${i + 1}档上界 ${b} 必须大于前一档 ${a}`);
+  }
+  return { errors, tiers };
+}
+
+// ---------- 闲时/忙时 ----------
+
+/** 返回 true=忙时 false=闲时 null=无官方定义/时间不可解析（UTC 工作日窗口，未含法定节假日） */
+function isPeakTime(iso, model) {
+  const w = model.peakWindows;
+  if (!w || !w.length) return null;
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  const day = d.getUTCDay();
+  if (day === 0 || day === 6) return false;
+  const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return w.some(([s, e]) => {
+    const [sh, sm] = s.split(":").map(Number), [eh, em] = e.split(":").map(Number);
+    return mins >= sh * 60 + sm && mins < eh * 60 + em;
+  });
+}
+
+// ---------- CSV 对账 ----------
+
+/** 简易 CSV 解析（支持引号与内嵌逗号/换行）。返回字符串数组的行。 */
+function parseCsv(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cur); rows.push(row); row = []; cur = "";
+    } else cur += ch;
+  }
+  if (cur !== "" || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0] !== "");
+}
+
+const CSV_HEADERS = ["time", "station", "provider", "model", "input", "output", "cacheRead", "cacheWrite", "actual", "remark"];
+const CSV_HEADER_CN = { "调用时间": "time", "中转站": "station", "服务商": "provider", "提供商": "provider", "模型": "model", "输入": "input", "输出": "output", "缓存读": "cacheRead", "缓存写": "cacheWrite", "实际扣费": "actual", "备注": "remark" };
+
+/** csv 文本 → [{time,station,provider,model,input,output,cacheRead,cacheWrite,actual,remark}]（跳过表头） */
+function parseBillCsv(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  let header = rows[0].map(c => c.trim());
+  let start = 0;
+  const mapped = header.map(c => CSV_HEADER_CN[c] || (CSV_HEADERS.includes(c) ? c : null));
+  if (mapped.some(Boolean)) { header = mapped; start = 1; }
+  else header = CSV_HEADERS.slice(0, header.length); // 无表头按固定列序
+  return rows.slice(start).map(r => {
+    const o = {};
+    header.forEach((k, i) => { if (k) o[k] = (r[i] || "").trim(); });
+    for (const k of ["input", "output", "cacheRead", "cacheWrite", "actual"]) o[k] = +o[k] || 0;
+    return o;
+  });
+}
+
+/**
+ * 逐行核对理论扣费 vs 实际扣费。
+ * 备注语义：有闲忙时区分的模型——非空=忙时、空=闲时；Claude 系（有 cacheWrite 双价）——非空=1h 缓存写。
+ * 时间校验：模型带 peakWindows 时按 UTC 判定闲忙，与备注冲突 → warn。
+ * @returns [{rec,status,flags[],theory,actual,diff,currency}]
+ */
+function reconcile(records, profile, dataset) {
+  const idx = modelIndex(dataset);
+  return records.map(rec => {
+    const st = (profile.stations || []).find(s => s.name === rec.station);
+    const pr = st && (st.providers || []).find(p => p.name === rec.provider);
+    const entry = idx.get(rec.model);
+    const out = { rec, status: "ok", flags: [], theory: null, actual: rec.actual, currency: entry ? entry.vendor.currency : "USD" };
+    if (!st) { out.status = `站「${rec.station}」不存在`; return out; }
+    if (!pr) { out.status = `提供商「${rec.provider}」不存在`; return out; }
+    if (!entry) { out.status = `模型「${rec.model}」不在价目`; return out; }
+    const remark = !!(rec.remark && String(rec.remark).trim());
+    const hasOff = !!entry.model.offPeakRatio;
+    const hasDualCW = entry.model.tiers.some(t => (t.cacheWrites || []).length > 1);
+    // 闲忙：备注非空=忙时
+    const offPeak = hasOff ? !remark : false;
+    if (hasOff) {
+      const pk = isPeakTime(rec.time, entry.model);
+      if (pk !== null && pk !== remark)
+        out.flags.push(pk ? "调用时间在官方忙时，备注却记为闲时" : "调用时间在官方闲时，备注却记为忙时");
+    }
+    // Claude 缓存写 TTL：备注非空=1h
+    const cacheTTL = hasDualCW && remark ? "1h" : "5m";
+    const u = resolveUnitPrices(entry, {
+      profile, station: st, provider: pr,
+      promptTokens: rec.input + rec.cacheRead + rec.cacheWrite,
+      offPeak,
+    });
+    if (!u.inScope) { out.status = "模型不在提供商范围"; return out; }
+    out.theory = estimateRequest(u, rec, { cacheTTL });
+    out.diff = out.theory - rec.actual;
+    out.u = u;
+    return out;
+  });
+}
+
 // ---------- 校验 ----------
 
 function validateConfig(json) {
@@ -374,6 +531,7 @@ const Calc = {
   resolveUnitPrices, blendedPrice, summaryRows, officialPrice,
   estimateRequest, newProvider, newStation, newProfile, defaultConfig,
   cloneNode, renameStation, validateConfig, validateTiers, tierLabelOf, fmtK,
+  tiersFromEditor, isPeakTime, parseCsv, parseBillCsv, reconcile, cacheWritePrice,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = Calc;

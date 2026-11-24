@@ -140,6 +140,13 @@ def parse_deepseek(md: str) -> list[dict]:
         i_off, i_peak = off("1M INPUT TOKENS / (CACHE MISS)"), peak("1M INPUT TOKENS / (CACHE MISS)")
         if i_off is not None and i_peak:
             ent["offPeakRatio"] = round(i_off / i_peak, 4)
+            # 官方脚注: "Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday..."
+            m = re.search(r"Peak hours are (.+?) UTC", md)
+            if m:
+                wins = re.findall(r"(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})", m.group(1))
+                if wins:
+                    ent["peakWindows"] = wins
+                    ent["peakNote"] = "UTC 工作日；法定节假日全天闲时（按工作日近似）"
         out.append(ent)
     return out
 

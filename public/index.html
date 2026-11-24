@@ -66,7 +66,7 @@
 </header>
 <div class="bar">
   <label>promptTokens <input type="number" id="scPrompt" min="0" step="1000"></label>
-  <label>配比 输入<input type="number" id="mixI" min="0" step="0.1">% 缓存读<input type="number" id="mixC" min="0" step="0.1">% 输出<input type="number" id="mixO" min="0" step="0.1">%</label>
+  <label>配比 输入<input type="number" id="mixI" min="0" step="0.1">% 缓存读<input type="number" id="mixC" min="0" step="0.1">% 缓存写<input type="number" id="mixW" min="0" step="0.1">% 输出<input type="number" id="mixO" min="0" step="0.1">%</label>
   <span class="sub" id="mixNorm"></span>
   <label>预设 <select id="presetSel"><option value="">—</option></select>
     <button id="presetSave" title="保存当前配比为预设">存</button></label>
@@ -82,6 +82,7 @@
   <button data-t="stations">中转站管理</button>
   <button data-t="official">官方价目</button>
   <button data-t="estimate">单次估算</button>
+  <button data-t="recon">账单核对</button>
 </div>
 <main>
   <div class="banner" id="banner" hidden></div>
@@ -115,10 +116,24 @@
     <div class="toolbar">
       <label>未命中输入 <input type="number" id="estI" value="20000"></label>
       <label>缓存读 <input type="number" id="estC" value="8000"></label>
+      <label>缓存写 <input type="number" id="estW" value="2000"></label>
       <label>输出 <input type="number" id="estO" value="4000"></label>
+      <label id="estTTLW" hidden>缓存TTL
+        <select id="estTTL"><option value="5m">5分钟</option><option value="1h">1小时</option></select></label>
       <b id="estOut"></b>
     </div>
     <div class="hint" id="estHint"></div>
+  </section>
+
+  <section id="t-recon" hidden>
+    <div class="toolbar">
+      <input type="file" id="csvFile" accept=".csv,text/csv">
+      <button id="csvSample">载入示例</button>
+      <span class="hint">列：调用时间,中转站,服务商,模型,输入,输出,缓存读,缓存写,实际扣费,备注</span>
+    </div>
+    <textarea id="csvText" rows="4" style="width:100%;font:12px monospace" placeholder="粘贴 CSV 或选择文件"></textarea>
+    <div class="toolbar" style="margin-top:6px"><button class="primary" id="csvRun">核对</button><span class="hint" id="csvInfo"></span></div>
+    <div style="overflow-x:auto"><table id="reconTable"></table></div>
   </section>
 
   <div class="drawer" id="drawer" hidden></div>
@@ -128,10 +143,12 @@
 <script>
 "use strict";
 const C = window.Calc, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const PROP = new Set(['selected','checked','disabled','hidden','value']);
 const h = (tag, attrs, ...kids) => { const e = document.createElement(tag);
   for (const [k,v] of Object.entries(attrs||{})) {
-    if (k==='class') e.className=v; else if (k.startsWith('on')) e[k]=v;
-    else if (k==='html') e.innerHTML=v; else e.setAttribute(k,v); }
+    if (v==null||v===false) continue;
+    if (k==='class') e.className=v; else if (k.startsWith('on')||PROP.has(k)) e[k]=v;
+    else if (k==='html') e.innerHTML=v; else e.setAttribute(k,v===true?'':v); }
   for (const k of kids.flat()) e.append(k?.nodeType?k:document.createTextNode(k??'')); return e; };
 const fmt = (n,cur) => n==null?'—':(cur==='USD'?'$':'¥')+(+n).toPrecision(4).replace(/\.?0+$/,'');
 const fmtC = n => n==null?'—':'¥'+(+n).toFixed(2);
@@ -193,23 +210,23 @@ function render(){renderProfiles();renderScenario();renderTab();persist();}
 
 function renderProfiles(){
   const sel=$('#pfSel');sel.innerHTML='';
-  for(const p of state.config.profiles)sel.append(h('option',{value:p.id,selected:p.id===state.config.activeProfileId?'':null},p.name));
+  for(const p of state.config.profiles)sel.append(h('option',{value:p.id,selected:p.id===state.config.activeProfileId},p.name));
 }
 function renderScenario(){
   const sc=profile().scenario;
-  $('#scPrompt').value=sc.promptTokens;$('#mixI').value=sc.mix.input;$('#mixC').value=sc.mix.cacheRead;$('#mixO').value=sc.mix.output;
+  $('#scPrompt').value=sc.promptTokens;$('#mixI').value=sc.mix.input;$('#mixC').value=sc.mix.cacheRead;$('#mixW').value=sc.mix.cacheWrite??0;$('#mixO').value=sc.mix.output;
   $('#scOffPeak').checked=!!sc.offPeak;$('#scTiered').checked=profile().tieredPricing?.enabled!==false;
   $('#fxMode').value=profile().exchangeRate.mode;$('#fxVal').value=profile().exchangeRate.mode==='manual'?(profile().exchangeRate.manualValue??state.rate):state.rate;
   $('#fxVal').disabled=profile().exchangeRate.mode!=='manual';
   $('#fxInfo').textContent=state.rateInfo;
-  try{const m=C.normalizeMix(sc.mix);$('#mixNorm').textContent=`归一化 ${(m.input*100).toFixed(0)}/${(m.cacheRead*100).toFixed(0)}/${(m.output*100).toFixed(0)}`;}catch(e){$('#mixNorm').textContent=e.message;}
+  try{const m=C.normalizeMix(sc.mix);$('#mixNorm').textContent=`归一化 ${(m.input*100).toFixed(0)}/${(m.cacheRead*100).toFixed(0)}/${(m.cacheWrite*100).toFixed(0)}/${(m.output*100).toFixed(0)}`;}catch(e){$('#mixNorm').textContent=e.message;}
   const ps=$('#presetSel');ps.innerHTML='<option value="">—</option>';
   (sc.presets||[]).forEach(p=>ps.append(h('option',{value:p.id},p.name)));
 }
 function renderTab(){
   $$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===state.tab));
   $$('main section').forEach(s=>s.hidden=s.id!=='t-'+state.tab);
-  ({result:renderResult,stations:renderStations,official:renderOfficial,estimate:renderEstimate})[state.tab]();
+  ({result:renderResult,stations:renderStations,official:renderOfficial,estimate:renderEstimate,recon:renderRecon})[state.tab]();
 }
 
 // ---------- 结果表 ----------
@@ -219,7 +236,7 @@ function renderResult(){
   const bar=$('#filters');bar.innerHTML='';
   for(const [k,label] of FILTERS){
     const vals=[...new Set(rows.map(r=>k==='profileId'?r.profileName:k==='stationId'?r.stationName:k==='providerId'?r.providerName:k==='vendorId'?r.vendorName:r[k]))].sort();
-    const sel=h('select',{},h('option',{value:''},label+':全部'),...vals.map(v=>h('option',{value:v,selected:state.filters[k]===v?'':null},v)));
+    const sel=h('select',{},h('option',{value:''},label+':全部'),...vals.map(v=>h('option',{value:v,selected:state.filters[k]===v},v)));
     sel.onchange=()=>{state.filters[k]=sel.value||null;renderResult();};
     bar.append(sel);
   }
@@ -266,7 +283,9 @@ function renderStations(){
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
-        [['编辑',()=>editProvider(st,pr)],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
+        [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>{const id=prompt('覆盖的模型 id','gpt-6.2-astra');if(!id||!id.trim())return;
+          const o={id:'ov-'+Date.now().toString(36),modelId:id.trim(),discount:null,tieredPricing:{enabled:true}};
+          pr.modelOverrides.push(o);render();editModelOverride(pr,o);}],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
          ['🗑',()=>lastProv?alert('站内最后一个提供商不可删除，可禁用'):del(`删除提供商「${pr.name}」？`,()=>{st.providers=st.providers.filter(x=>x!==pr);render();})]],!pr.enabled));
       for(const o of pr.modelOverrides||[]){
         const lbl=o.basePrice?`自定价(${o.basePrice.tiers.length}档)✎`:`折${o.discount}`;
@@ -291,7 +310,7 @@ function drawer(title,bodyKids,onSave){
   d.append(h('h3',{},title),...bodyKids);
   const foot=h('div',{class:'foot'});
   foot.append(h('button',{onclick:()=>d.hidden=true},'取消'),
-              h('button',{class:'primary',onclick:()=>{onSave();d.hidden=true;render();}},'保存'));
+              h('button',{class:'primary',onclick:()=>{if(onSave()===false)return;d.hidden=true;render();}},'保存'));
   d.append(foot);
   return d;
 }
@@ -300,25 +319,27 @@ const inp=(v,ty='text')=>h('input',{type:ty,value:v});
 
 function editStation(st){
   const name=inp(st.name),url=inp(st.url||''),disc=inp(st.defaultDiscount??1,'number'),
-        tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false?'':null}),
-        en=h('input',{type:'checkbox',checked:st.enabled?'':null}),notes=inp(st.notes||'');
+        tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false}),
+        en=h('input',{type:'checkbox',checked:st.enabled}),notes=inp(st.notes||'');
   drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
     row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp),row('启用',en),row('备注',notes),
     h('div',{class:'hint'},'改名时默认提供商若仍与旧站名同名则联动改名')],
-    ()=>{const d=+disc.value;if(!(d>0&&d<=10))return alert('折扣须在(0,10]');
+    ()=>{const d=+disc.value;if(!(d>0&&d<=10)){alert('折扣须在(0,10]');return false;}
       C.renameStation(st,name.value.trim()||st.name);
       st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;});
 }
 
 function editProvider(st,pr){
-  const name=inp(pr.name),en=h('input',{type:'checkbox',checked:pr.enabled?'':null}),
-        tp=h('input',{type:'checkbox',checked:pr.tieredPricing?.enabled!==false?'':null}),
-        discMode=h('select',{},h('option',{value:''},`继承站默认(${st.defaultDiscount})`),h('option',{value:'1',selected:pr.defaultDiscount!=null?'':null},'自填')),
+  const name=inp(pr.name),en=h('input',{type:'checkbox',checked:pr.enabled}),
+        tp=h('input',{type:'checkbox',checked:pr.tieredPricing?.enabled!==false}),
+        discMode=h('select',{},h('option',{value:''},`继承站默认(${st.defaultDiscount})`),h('option',{value:'1',selected:pr.defaultDiscount!=null},'自填')),
         disc=inp(pr.defaultDiscount??'','number');
-  const scope=pr.scope||(pr.scope={vendorIds:[],series:[],modelIds:[]});
+  const scope=JSON.parse(JSON.stringify(pr.scope||{vendorIds:[],series:[],modelIds:[]}));
+  const sws=JSON.parse(JSON.stringify(pr.vendorSwitches||[]));
   const models=C.allModels(state.dataset);
-  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价）'),h('br'));
   const vChips=h('div',{}),sChips=h('div',{}),mList=h('div',{});
+  const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价）'),vChips,sChips,mList);
+  const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关（未选厂商时无项）'));
   const renderScope=()=>{
     vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
     vChips.append('厂商: ');
@@ -334,48 +355,67 @@ function editProvider(st,pr){
     mList.append(h('b',{},'或精确模型白名单: '));
     (scope.modelIds||[]).forEach(id=>mList.append(h('span',{class:'chip',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},'×'+id)));
     const mIn=inp('');mIn.placeholder='输入模型id回车添加';
-    mIn.onkeydown=e=>{if(e.key==='Enter'&&mIn.value.trim()){scope.modelIds.push(mIn.value.trim());renderScope();}};
+    mIn.onkeydown=e=>{if(e.key==='Enter'&&mIn.value.trim()){scope.modelIds.push(mIn.value.trim());mIn.value='';renderScope();}};
     mList.append(mIn);
+    // 厂商级分档开关随所选厂商刷新
+    vs.innerHTML='';vs.append(h('b',{},'厂商级分档开关'+(scope.vendorIds.length?'':'（未选厂商时无项）')));
+    for(const vid of scope.vendorIds){
+      const cur=sws.find(v=>v.vendorId===vid);
+      vs.append(h('label',{},h('input',{type:'checkbox',checked:!cur||cur.tieredPricing?.enabled!==false,
+        onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
+    }
   };
   renderScope();
-  const vs=h('div',{class:'box'},h('b',{},'厂商级分档开关'),h('br'));
-  const sws=pr.vendorSwitches||(pr.vendorSwitches=[]);
-  for(const vid of scope.vendorIds){
-    const cur=sws.find(v=>v.vendorId===vid);
-    vs.append(h('label',{},h('input',{type:'checkbox',checked:(!cur||cur.tieredPricing?.enabled!==false)?'':null,
-      onchange:e=>{const c=sws.find(v=>v.vendorId===vid);c?c.tieredPricing={enabled:e.target.checked}:sws.push({vendorId:vid,tieredPricing:{enabled:e.target.checked}});}}),` ${vid} `));
-  }
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
     row('默认折扣',discMode,disc),vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
     ()=>{pr.name=name.value.trim()||pr.name;pr.enabled=en.checked;pr.tieredPricing={enabled:tp.checked};
-      pr.defaultDiscount=discMode.value?+disc.value:null;});
+      pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;});
 }
 
 function editModelOverride(pr,o){
   const mid=o.modelId;
-  const disc=inp(o.discount??'','number'),tp=h('input',{type:'checkbox',checked:o.tieredPricing?.enabled!==false?'':null});
-  const useCustom=h('input',{type:'checkbox',checked:o.basePrice?'':null});
-  const tierBox=h('div',{class:'box'},h('b',{},'tiers（币种=模型官方币种）'));
-  const tiers=o.basePrice?o.basePrice.tiers:[{upToTokens:null,input:0,output:0,cacheRead:null}];
-  const renderT=()=>{tierBox.innerHTML='';tierBox.append(h('b',{},'tiers（币种=模型官方币种）'),h('br'));
-    tiers.forEach((t,i)=>{
-      const up=t.upToTokens==null?'无上限':`≤${t.upToTokens}`;
-      tierBox.append(h('div',{class:'row'},`${up}: 输入`,numIn(t,'input'),'缓存',numIn(t,'cacheRead',true),'输出',numIn(t,'output'),
-        i<tiers.length-1?h('button',{onclick:()=>{tiers.splice(i,1);renderT();}},'🗑'):''));
+  const disc=inp(o.discount??'','number'),tp=h('input',{type:'checkbox',checked:o.tieredPricing?.enabled!==false});
+  const useCustom=h('input',{type:'checkbox',checked:!!o.basePrice});
+  // tiers → 操作符行：中间档 </≤，末档 >/≥ 或 全部
+  const toRows=ts=>ts.map((t,i)=>{
+    if(t.upToTokens==null){
+      const prev=i>0?ts[i-1].upToTokens:null;
+      return prev==null?{op:'all',value:'',input:t.input,cacheRead:t.cacheRead??'',output:t.output}
+        :{op:'>',value:prev,input:t.input,cacheRead:t.cacheRead??'',output:t.output};
+    }
+    return {op:'≤',value:t.upToTokens,input:t.input,cacheRead:t.cacheRead??'',output:t.output};
+  });
+  const rows=toRows(o.basePrice?o.basePrice.tiers:[{upToTokens:null,input:0,output:0,cacheRead:null}]);
+  const tierBox=h('div',{class:'box'});
+  const errBox=h('div',{class:'hint',style:'color:#b91c1c'});
+  const numIn2=(r,k)=>{const i=inp(r[k]??'','number');i.onchange=()=>{r[k]=i.value;};return i;};
+  const renderT=()=>{tierBox.innerHTML='';
+    tierBox.append(h('b',{},'分档（按覆盖从小到大排列；价=模型官方币种/1M tokens）'));
+    rows.forEach((r,i)=>{
+      const last=i===rows.length-1;
+      const ops=last?['≤','<','>','≥','all']:['≤','<'];
+      const opSel=h('select',{},...ops.map(op=>h('option',{value:op,selected:r.op===op},op==='all'?'全部':`x ${op} 阈值`)));
+      opSel.onchange=()=>{r.op=opSel.value;};
+      const valIn=inp(r.value??'','number');valIn.placeholder='tokens';valIn.onchange=()=>{r.value=valIn.value;};
+      tierBox.append(h('div',{class:'row'},h('b',{},`档${i+1}`),opSel,r.op==='all'?'':valIn,
+        '输入',numIn2(r,'input'),'缓存读',numIn2(r,'cacheRead'),'输出',numIn2(r,'output'),
+        rows.length>1?h('button',{onclick:()=>{rows.splice(i,1);renderT();}},'🗑'):''));
     });
-    tierBox.append(h('button',{onclick:()=>{const prev=tiers[tiers.length-1];const up=prev.upToTokens;
-      tiers.splice(tiers.length-1,0,{upToTokens:(up??272000),input:prev.input,output:prev.output,cacheRead:prev.cacheRead});
-      if(tiers.length>1&&tiers[tiers.length-1].upToTokens!=null)tiers[tiers.length-1].upToTokens=null;renderT();}},'＋加档'));
+    tierBox.append(h('button',{onclick:()=>{rows.push({op:'>',value:'',input:'',cacheRead:'',output:''});renderT();}},'＋加档'),
+      h('small',{class:'dim'},'　校验：禁止重叠与缺漏，保存时检查'));
   };
-  const numIn=(t,k,nullable)=>{const i=inp(t[k]??'','number');i.onchange=()=>{t[k]=i.value===''&&nullable?null:+i.value;};return i;};
-  const upIn=h('div',{class:'row'},'阈值编辑: 各档上限在表格中以 ≤N 表示；首档上限',(()=>{const i=inp(tiers[0].upToTokens??'','number');i.onchange=()=>{tiers[0].upToTokens=i.value===''?null:+i.value;};return i;})(),'（留空=无上限，仅末档可空）');
   renderT();
   drawer(`编辑模型覆盖 — ${mid}`,[row('计价方式',h('label',{},'折扣',disc),h('label',{},useCustom,'自定义基础价')),
-    tpWrap=>tpWrap, // noop keep structure
-    tierBox,upIn,row('分档计价',tp)],
-    ()=>{const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked}};
-      if(useCustom.checked){const v=C.validateTiers(tiers,mid,[]);res.basePrice={tiers};}
-      Object.assign(o,res);});
+    tierBox,errBox,row('分档计价',tp)],
+    ()=>{
+      const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked}};
+      if(useCustom.checked){
+        const {errors,tiers}=C.tiersFromEditor(rows);
+        if(errors.length){errBox.innerHTML='';errors.forEach(e=>errBox.append(h('div',{},'⚠ '+e)));return false;}
+        res.basePrice={tiers};
+      } else res.basePrice=null;
+      Object.assign(o,res);
+    });
 }
 
 // ---------- 官方价目 ----------
@@ -417,15 +457,57 @@ function renderEstimate(){
     const st=pf.stations.find(s=>s.id===stId),pr=st?.providers.find(p=>p.id===prId);
     const entry=[...C.modelIndex(state.dataset).values()].find(e=>e.model.id===ms.value);
     if(!st||!pr||!entry){$('#estOut').textContent='';$('#estHint').textContent='选择提供商与模型';return;}
-    const u=C.resolveUnitPrices(entry,{profile:pf,station:st,provider:pr,promptTokens:+pf.scenario.promptTokens||0,offPeak:!!pf.scenario.offPeak});
+    const promptTokens=(+$('#estI').value||0)+(+$('#estC').value||0)+(+$('#estW').value||0);
+    const u=C.resolveUnitPrices(entry,{profile:pf,station:st,provider:pr,promptTokens,offPeak:!!pf.scenario.offPeak});
     if(!u.inScope){$('#estOut').textContent='';$('#estHint').textContent='该模型不在此提供商范围内';return;}
-    const cost=C.estimateRequest(u,{input:$('#estI').value,cacheRead:$('#estC').value,output:$('#estO').value});
+    $('#estTTLW').hidden=u.cacheWrite1h==null;
+    const cost=C.estimateRequest(u,{input:$('#estI').value,cacheRead:$('#estC').value,cacheWrite:$('#estW').value,output:$('#estO').value},{cacheTTL:$('#estTTL').value});
     const cur=entry.vendor.currency;
     $('#estOut').textContent=`费用: ${fmt(cost,cur)} / ${fmtC(C.convert(cost,cur,state.rate))}`;
-    $('#estHint').textContent=`命中档 ${u.tierLabel||'—'} · 折扣 ${u.discount} · 来源 ${u.source}`;
+    $('#estHint').textContent=`命中档 ${u.tierLabel||'—'} · 折扣 ${u.discount} · 来源 ${u.source}`+(u.cacheWrite1h!=null?` · 缓存写按${$('#estTTL').value}`:'');
   };
-  [ps,ms,$('#estI'),$('#estC'),$('#estO')].forEach(el=>el.onchange=el.oninput=calc);
+  [ps,ms,$('#estI'),$('#estC'),$('#estW'),$('#estO'),$('#estTTL')].forEach(el=>el.onchange=el.oninput=calc);
   calc();
+}
+
+// ---------- 账单核对 ----------
+const SAMPLE_CSV=`调用时间,中转站,服务商,模型,输入,输出,缓存读,缓存写,实际扣费,备注
+2026-11-24T03:00:00Z,示例站A,批发上游,claude-sonnet-5-5,20000,4000,8000,2000,0.052,
+2026-11-24T03:05:00Z,示例站A,批发上游,claude-sonnet-5-5,20000,4000,8000,2000,0.058,长会话
+2026-11-24T07:30:00Z,便宜站B,便宜站B,deepseek-v4-pro,50000,8000,30000,0,0.085,促销
+2026-11-24T12:30:00Z,便宜站B,便宜站B,deepseek-v4-pro,50000,8000,30000,0,0.045,
+2026-11-24T09:00:00Z,不存在站,便宜站B,gpt-5.4-mini,10000,3000,0,0,0.01,`;
+function renderRecon(){
+  $('#csvRun').onclick=()=>{
+    const recs=C.parseBillCsv($('#csvText').value);
+    if(!recs.length){$('#csvInfo').textContent='无有效行';return;}
+    const out=C.reconcile(recs,profile(),state.dataset);
+    const t=$('#reconTable');t.innerHTML='';
+    const cols=['#','调用时间','站','提供商','模型','输入/缓读/缓写/输出','实际扣费','理论扣费','差值','结论'];
+    const tr=h('tr',{});cols.forEach(c=>tr.append(h('th',{class:'no-sort'},c)));t.append(tr);
+    let ok=0,warn=0,bad=0;
+    out.forEach((r,i)=>{
+      let verdict,cls='';
+      if(r.status!=='ok'){verdict=r.status;cls='';bad++;}
+      else{
+        const tol=Math.max(Math.abs(r.actual)*0.005,1e-6);
+        const d=Math.abs(r.diff);
+        if(r.flags.length){verdict='⚠ '+r.flags.join('；');cls='warn';warn++;}
+        verdict=(verdict?verdict+' ':'')+(d<=tol?'✓ 一致':`差 ${(r.diff>0?'+':'')}${r.diff.toPrecision(3)}`);
+        if(d>tol){bad++;if(!cls)cls='diff';}
+      }
+      t.append(h('tr',{class:cls==='warn'?'':''},
+        h('td',{},String(i+1)),h('td',{},r.rec.time||'—'),h('td',{},r.rec.station),h('td',{},r.rec.provider),h('td',{},r.rec.model),
+        h('td',{class:'dim'},`${r.rec.input}/${r.rec.cacheRead}/${r.rec.cacheWrite}/${r.rec.output}`),
+        h('td',{},fmt(r.actual,r.currency)),
+        h('td',{},r.theory==null?'—':fmt(r.theory,r.currency)),
+        h('td',{},r.diff==null?'—':(r.diff>0?'+':'')+r.diff.toPrecision(3)),
+        h('td',{style:r.flags.length?'background:#fef9c3':''},verdict)));
+    });
+    $('#csvInfo').textContent=`${out.length} 行：✓一致 ${ok=out.length-warn-bad} · ⚠提示 ${warn} · ✗差异/缺失 ${bad}`;
+  };
+  $('#csvFile').onchange=async e=>{$('#csvText').value=await e.target.files[0].text();};
+  $('#csvSample').onclick=()=>{$('#csvText').value=SAMPLE_CSV;$('#csvRun').click();};
 }
 
 // ---------- 事件绑定 ----------
@@ -444,7 +526,7 @@ function bindGlobal(){
     const v=C.validateConfig(j);if(!v.ok)return alert('导入失败:\n'+v.errors.join('\n'));
     state.config=j;render();}catch(err){alert('解析失败: '+err.message);}};
   $('#scPrompt').onchange=e=>{profile().scenario.promptTokens=+e.target.value||0;render();};
-  for(const [id,k] of [['mixI','input'],['mixC','cacheRead'],['mixO','output']])
+  for(const [id,k] of [['mixI','input'],['mixC','cacheRead'],['mixW','cacheWrite'],['mixO','output']])
     $(id).onchange=e=>{profile().scenario.mix[k]=+e.target.value||0;render();};
   $('#presetSel').onchange=e=>{const p=(profile().scenario.presets||[]).find(x=>x.id===e.target.value);
     if(p){profile().scenario.mix={...p.mix};profile().scenario.promptTokens=p.promptTokens;render();}};

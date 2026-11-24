@@ -10,11 +10,11 @@ window.DEMO_CONFIG = {
       exchangeRate: { mode: "auto", manualValue: null, auto: { value: null, source: null, fetchedAt: null } },
       scenario: {
         promptTokens: 128000,
-        mix: { input: 0.5, cacheRead: 0.3, output: 0.2 },
+        mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 },
         offPeak: false,
         presets: [
-          { id: "pp-1", name: "对话均衡 5/3/2", promptTokens: 128000, mix: { input: 0.5, cacheRead: 0.3, output: 0.2 } },
-          { id: "pp-2", name: "高缓存读 3/6/1", promptTokens: 128000, mix: { input: 0.3, cacheRead: 0.6, output: 0.1 } }
+          { id: "pp-1", name: "对话均衡", promptTokens: 128000, mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 } },
+          { id: "pp-2", name: "高缓存读", promptTokens: 128000, mix: { input: 0.25, cacheRead: 0.6, cacheWrite: 0.05, output: 0.1 } }
         ],
         activePreset: null
       },
@@ -95,10 +95,10 @@ window.DEMO_CONFIG = {
       exchangeRate: { mode: "auto", manualValue: null, auto: { value: null, source: null, fetchedAt: null } },
       scenario: {
         promptTokens: 300000,
-        mix: { input: 0.9, cacheRead: 0.05, output: 0.05 },
+        mix: { input: 0.85, cacheRead: 0.05, cacheWrite: 0.05, output: 0.05 },
         offPeak: true,
         presets: [
-          { id: "pp-3", name: "长文写作 9/0.5/0.5", promptTokens: 300000, mix: { input: 0.9, cacheRead: 0.05, output: 0.05 } }
+          { id: "pp-3", name: "长文写作", promptTokens: 300000, mix: { input: 0.85, cacheRead: 0.05, cacheWrite: 0.05, output: 0.05 } }
         ],
         activePreset: null
       },
@@ -146,7 +146,7 @@ window.DEMO_CONFIG = {
       exchangeRate: { mode: "auto", manualValue: null, auto: { value: null, source: null, fetchedAt: null } },
       scenario: {
         promptTokens: 128000,
-        mix: { input: 0.5, cacheRead: 0.3, output: 0.2 },
+        mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 },
         offPeak: false, presets: [], activePreset: null
       },
       tieredPricing: { enabled: true },
