@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.12 · edf5724</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.13 · c2d7cd6</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -307,8 +307,9 @@ function renderStations(){
       sw(st.tieredPricing?.enabled,'分档'),' ',st.enabled?'☑启用':'☐停用'],
       [['编辑',()=>editStation(st)],['⧉复制',()=>{pf.stations.push(C.cloneNode(st,'station'));render();}],['🗑',()=>del(`删除站点「${st.name}」？`,()=>{pf.stations=pf.stations.filter(x=>x!==st);render();})]],!st.enabled));
     for(const pr of st.providers||[]){
-      const base=`${pr.scope?.vendorIds?.length?pr.scope.vendorIds.join(','):'全部厂商'}/${pr.scope?.series?.length?pr.scope.series.join(','):'全部系列'}`;
-      const scope=pr.scope?.modelIds?.length?`${base} +白名单${pr.scope.modelIds.length}`:base;
+      const vs=pr.scope?.vendors?Object.entries(pr.scope.vendors).map(([v,s])=>s.length?`${v}(${s.join('/')})`:v).join(' ')
+        :(pr.scope?.vendorIds?.length?pr.scope.vendorIds.join(',')+(pr.scope.series?.length?'/'+pr.scope.series.join('/'):''):'全部');
+      const scope=pr.scope?.modelIds?.length?`${vs} +白名单${pr.scope.modelIds.length}`:vs;
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
@@ -444,28 +445,39 @@ function editStation(st){
 function scopeEditor(scope,onVendorChange){
   const models=C.allModels(state.dataset);
   const vChips=h('div',{}),sChips=h('div',{}),mList=h('div',{});
+  // 统一为 vendors map：{openai: [], anthropic: ['claude-opus']}，兼容旧字段
+  const vendors=scope.vendors||(scope.vendors={});
+  if(scope.vendorIds)for(const v of scope.vendorIds)if(!(v in vendors))vendors[v]=(scope.series||[]).slice();
+  delete scope.vendorIds;delete scope.series;
   const refresh=()=>{
     vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
-    vChips.append('厂商: ');
-    vChips.append(h('span',{class:'chip'+(!scope.vendorIds.length?' on':''),title:'不限制厂商',
-      onclick:()=>{scope.vendorIds=[];refresh();}},'全部'));
+    vChips.append('厂商→系列: ');
+    vChips.append(h('span',{class:'chip'+(!Object.keys(vendors).length?' on':''),title:'不限制厂商',
+      onclick:()=>{Object.keys(vendors).forEach(k=>delete vendors[k]);refresh();}},'全部'));
     for(const v of state.dataset.providers){
-      const on=scope.vendorIds.includes(v.id);
-      vChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.vendorIds=scope.vendorIds.filter(x=>x!==v.id):scope.vendorIds.push(v.id);refresh();}},v.id));
+      const sel=v.id in vendors;
+      const grp=h('span',{style:'white-space:nowrap'});
+      grp.append(h('span',{class:'chip'+(sel?' on':''),onclick:()=>{sel?delete vendors[v.id]:vendors[v.id]=[];refresh();}},v.id));
+      if(sel){
+        const sels=vendors[v.id];
+        const seriesSet=[...new Set(models.filter(e=>e.vendor.id===v.id).map(e=>C.classifySeries(e.model.id)))].sort();
+        grp.append(' ',h('span',{class:'chip'+(!sels.length?' on':''),title:'该厂商全部系列',
+          onclick:()=>{vendors[v.id]=[];refresh();}},'全部'));
+        for(const s of seriesSet){
+          const on=sels.includes(s);
+          grp.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{
+            on?sels.splice(sels.indexOf(s),1):sels.push(s);refresh();}},s));
+        }
+      }
+      vChips.append(grp,' ');
     }
-    const seriesSet=[...new Set(models.filter(e=>!scope.vendorIds.length||scope.vendorIds.includes(e.vendor.id)).map(e=>C.classifySeries(e.model.id)))].sort();
-    sChips.append('系列(级联): ');
-    sChips.append(h('span',{class:'chip'+(!scope.series.length?' on':''),title:'不限制系列',
-      onclick:()=>{scope.series=[];refresh();}},'全部'));
-    seriesSet.forEach(s=>{const on=scope.series.includes(s);
-      sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);refresh();}},s));});
     const wl=scope.modelIds||[];
     mList.append(h('div',{class:'dim',style:'font-size:12px'},
       wl.length?`额外包含 ${wl.length} 个模型（与上方厂商×系列取并集）`:'可选：白名单=在厂商×系列范围外额外包含的模型'));
     wl.forEach(id=>mList.append(h('span',{class:'chip on',title:'点击移除',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);refresh();}},id+' ×')));
     mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
       ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});refresh();})},'＋选择模型'));
-    onVendorChange&&onVendorChange(scope.vendorIds);
+    onVendorChange&&onVendorChange(Object.keys(vendors));
   };
   refresh();
   return {el:h('div',{},vChips,sChips,mList),refresh};

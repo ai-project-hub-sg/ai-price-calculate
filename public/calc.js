@@ -86,13 +86,19 @@ function allModels(dataset) {
 function inScope(scope, model, vendorId) {
   if (!scope) return true;
   const wl = scope.modelIds || [];
-  const hasVS = (scope.vendorIds && scope.vendorIds.length) || (scope.series && scope.series.length);
+  // 兼容旧结构 {vendorIds, series}：同一组系列作用于全部所选厂商
+  let vendors = scope.vendors;
+  if (!vendors && (scope.vendorIds || scope.series)) {
+    vendors = {};
+    for (const v of scope.vendorIds || []) vendors[v] = (scope.series || []).slice();
+  }
+  const hasVS = vendors && Object.keys(vendors).length;
   if (wl.includes(model.id)) return true;
   if (wl.length && !hasVS) return false;          // 纯白名单模式
   if (!hasVS) return true;                        // 全不选=全量
-  const vOk = !scope.vendorIds || !scope.vendorIds.length || scope.vendorIds.includes(vendorId);
-  const sOk = !scope.series || !scope.series.length || scope.series.includes(classifySeries(model.id));
-  return vOk && sOk;
+  const sels = vendors[vendorId];
+  if (!sels) return false;
+  return !sels.length || sels.includes(classifySeries(model.id));
 }
 
 // ---------- 价格解析 ----------
