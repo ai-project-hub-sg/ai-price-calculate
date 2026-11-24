@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.26 · b061db2</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.27 · 35579a7</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -166,7 +166,7 @@ const esc = s => String(s??'');
 // ---------------- 状态 ----------------
 const LS_CFG='aipc.config', LS_KEY='aipc.models';
 let state = { config:null, dataset:null, rate:7.10, rateInfo:'手动兜底', backend:false,
-              tab:'result', sort:{key:'priceNative',dir:1}, filters:{}, editing:null };
+              tab:'result', sort:{key:'priceStation',dir:1}, filters:{}, editing:null };
 
 // file:// 兜底小数据集（后端在时会被 /api/models 全量替换）
 const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
@@ -275,7 +275,7 @@ function renderResult(){
 
   const shown=rows.filter(r=>pass(r));
   $('#rowCount').textContent=`共 ${shown.length} 行（全部档案合计 ${rows.length}）`;
-  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['mixLabel','配比(入|读|写|出)'],['priceNative','中转站价格(¥)'],['officialNative','官价(原币)'],['officialCny','官价换汇(¥)']];
+  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['mixLabel','配比(入|读|写|出)'],['priceStation','中转站价格(¥)'],['officialNative','官价(原币)'],['officialCny','官价换汇(¥)']];
   const t=$('#resultTable');t.innerHTML='';
   if(!shown.length){t.append(h('tr',{},h('td',{class:'dim',colspan:cols.length},'无结果——建个站点或放宽筛选')));return;}
   const tr=h('tr',{});
@@ -294,7 +294,7 @@ function renderResult(){
       h('td',{},r.vendorName),h('td',{},r.series),h('td',{},r.modelId),
       h('td',{},r.tierLabel),h('td',{class:srcCls},String(r.discount)),
       h('td',{class:'dim'},r.mixLabel||''),
-      h('td',{},fmtC(r.priceNative)),
+      h('td',{title:r.rechargeRatio!==1?`=${(+r.priceNative||0).toFixed(4)}代币 ÷ 充比${r.rechargeRatio}`:''},fmtC(r.priceStation)),
       h('td',{class:'dim'},fmt(r.officialNative,r.currency)),h('td',{class:'dim'},fmtC(r.officialCny))));
   }
 }
@@ -306,7 +306,7 @@ function renderStations(){
   if(!pf.stations.length){tree.append(h('div',{class:'empty'},'还没有站点——点「＋新建站点」开始'));return;}
   for(const st of pf.stations){
     tree.append(nodeEl(1,[h('b',{},`▼ ${st.name}`),`　默认折${st.defaultDiscount??1} `,
-      sw(st.tieredPricing?.enabled,'分档'),' ',st.enabled?'☑启用':'☐停用'],
+      sw(st.tieredPricing?.enabled,'分档'),(+st.rechargeRatio||1)!==1?` 充比${st.rechargeRatio}`:'',' ',st.enabled?'☑启用':'☐停用'],
       [['编辑',()=>editStation(st)],['⧉复制',()=>{pf.stations.push(C.cloneNode(st,'station'));render();}],['🗑',()=>del(`删除站点「${st.name}」？`,()=>{pf.stations=pf.stations.filter(x=>x!==st);render();})]],!st.enabled));
     for(const pr of st.providers||[]){
       const vs=pr.scope?.vendors?Object.entries(pr.scope.vendors).map(([v,s])=>s.length?`${v}(${s.join('/')})`:v).join(' ')
@@ -429,19 +429,20 @@ function mixEditor(label,cur){
 
 function editStation(st){
   const name=inp(st.name),url=inp(st.url||''),disc=inp(st.defaultDiscount??1,'number'),
+        rr=inp(st.rechargeRatio??1,'number'),
         tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false}),
         en=h('input',{type:'checkbox',checked:st.enabled}),notes=inp(st.notes||'');
   const mx=mixEditor('配比',st.mix);
   const scope=JSON.parse(JSON.stringify(st.scope||{vendorIds:[],series:[],modelIds:[]}));
   const scEd=scopeEditor(scope);
   drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
-    row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp,h('small',{class:'dim'},'按模型档价计费；关掉则统一按首档')),
+    row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('充值比例',rr,h('small',{class:'dim'},'¥1→N代币；1=一比一，部分站1元=15~20代币')),row('分档计价',tp,h('small',{class:'dim'},'按模型档价计费；关掉则统一按首档')),
     row('启用站点',en,h('small',{class:'dim'},'不勾=该站停用，不产结果行')),row('备注',notes),
     mx.el,h('div',{class:'box'},h('b',{},'提供范围（站点能提供的上限；提供商只能在其内选择）'),scEd.el),
     h('div',{class:'hint'},'配比继承：模型覆盖 > 提供商 > 站 > 档案场景；改名时默认提供商若仍与旧站名同名则联动改名')],
     ()=>{const d=+disc.value;if(!(d>0&&d<=10)){alert('折扣须在(0,10]');return false;}
       C.renameStation(st,name.value.trim()||st.name);
-      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();st.scope=scope;});
+      st.url=url.value;st.defaultDiscount=d;st.rechargeRatio=+rr.value||1;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();st.scope=scope;});
 }
 
 /** 提供范围编辑器（站/商共用）：厂商→系列→模型 三级联选树，全不勾=不限制；parentScope=上级范围，可选项被其裁剪 */
@@ -698,9 +699,9 @@ function renderEstimate(){
     if(!u.inScope){$('#estOut').textContent='';$('#estHint').textContent='该模型不在此提供商范围内';return;}
     $('#estTTLW').hidden=u.cacheWrite1h==null;
     const cost=C.estimateRequest(u,{input:$('#estI').value,cacheRead:$('#estC').value,cacheWrite:$('#estW').value,output:$('#estO').value},{cacheTTL:$('#estTTL').value});
-    const cur=entry.vendor.currency;
-    $('#estOut').textContent=`费用: ${fmt(cost,cur)} / ${fmtC(C.convert(cost,cur,state.rate))}`;
-    $('#estHint').textContent=`命中档 ${u.tierLabel||'—'} · 折扣 ${u.discount} · 来源 ${u.source}`+(u.cacheWrite1h!=null?` · 缓存写按${$('#estTTL').value}`:'');
+    const ratio=+st.rechargeRatio||1;
+    $('#estOut').textContent=`费用: ${(+cost||0).toFixed(4)} 代币 ≈ ${fmtC(cost/ratio)}`;
+    $('#estHint').textContent=`命中档 ${u.tierLabel||'—'} · 折扣 ${u.discount} · 来源 ${u.source}`+(u.cacheWrite1h!=null?` · 缓存写按${$('#estTTL').value}`:'')+(ratio!==1?` · 充比${ratio}`:'');
   };
   [ps,ms,$('#estI'),$('#estC'),$('#estW'),$('#estO'),$('#estTTL')].forEach(el=>el.onchange=el.oninput=calc);
   calc();

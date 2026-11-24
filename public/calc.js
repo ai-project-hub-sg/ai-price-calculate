@@ -260,6 +260,7 @@ function summaryRows(profiles, dataset, rate) {
           const rowMix = resolveMix(pf, st, pr, mOv, entry);
           const cur = entry.vendor.currency || "USD";
           const native = blendedPrice(u, rowMix);
+          const ratio = +st.rechargeRatio || 1;   // ¥1 → N 代币
           // 官方基准价（无折扣、官方 tier、同档位、同配比；原币）
           const off = officialPrice(entry, pf, rate, rowMix);
           rows.push({
@@ -278,6 +279,7 @@ function summaryRows(profiles, dataset, rate) {
             tierIndex: u.tierIndex,
             discount: u.discount, source: u.source, tiered: u.tiered,
             priceNative: native, currency: cur,
+            rechargeRatio: ratio, priceStation: native / ratio,
             priceCny: convert(native, cur, rate),
             officialNative: off,
             officialCny: convert(off, cur, rate),
@@ -332,7 +334,7 @@ function newProvider(name, isDefault) {
 function newStation(name) {
   return {
     id: uid("st"), name, url: "",
-    enabled: true, defaultDiscount: 1, notes: "",
+    enabled: true, defaultDiscount: 1, rechargeRatio: 1, notes: "",
     tieredPricing: { enabled: true },
     scope: { vendorIds: [], series: [], modelIds: [] },  // 站点可提供范围（上界）
     providers: [newProvider(name, true)],   // 默认提供商与站同名

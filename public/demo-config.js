@@ -61,7 +61,7 @@ window.DEMO_CONFIG = {
           ]
         },
         {
-          id: "st-b", name: "便宜站B", url: "", enabled: true, defaultDiscount: 0.7, notes: "",
+          id: "st-b", name: "便宜站B", url: "", enabled: true, defaultDiscount: 0.7, rechargeRatio: 15, notes: "",
           tieredPricing: { enabled: true },
           providers: [
             {
