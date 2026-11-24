@@ -312,9 +312,10 @@ function renderStations(){
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
-        [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>pickModel('新增模型覆盖',id=>{
-          const o={id:'ov-'+Date.now().toString(36),modelId:id,discount:null,tieredPricing:{enabled:true}};
-          pr.modelOverrides.push(o);render();editModelOverride(pr,o);})],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
+        [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>pickModels('新增模型覆盖',ids=>{
+          ids.forEach(id=>{if(pr.modelOverrides.some(x=>x.modelId===id))return;
+            pr.modelOverrides.push({id:'ov-'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),modelId:id,discount:null,tieredPricing:{enabled:true}});});
+          render();if(ids.length===1)editModelOverride(pr,pr.modelOverrides.find(x=>x.modelId===ids[0]));})],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
          ['🗑',()=>lastProv?alert('站内最后一个提供商不可删除，可禁用'):del(`删除提供商「${pr.name}」？`,()=>{st.providers=st.providers.filter(x=>x!==pr);render();})]],!pr.enabled));
       for(const o of pr.modelOverrides||[]){
         const lbl=o.basePrice?`自定价(${o.basePrice.tiers.length}档)✎`:`折${o.discount}`;
@@ -325,19 +326,47 @@ function renderStations(){
     }
   }
 }
-/** 模型选择抽屉：datalist 支持输入过滤/下拉 */
-function pickModel(title,cb){
-  const input=h('input',{type:'text'});input.setAttribute('list','allModels');input.style.width='300px';
-  const ok=h('button',{class:'primary',onclick:()=>{
-    const v=input.value.trim();
-    if(!v)return;
-    d.hidden=true;cb(v);
-  }});
-  input.onkeydown=e=>{if(e.key==='Enter')ok.click();};
+/** 模型级联多选抽屉：厂商→系列→模型 checkbox，返回选中 id 数组 */
+function pickModels(title,cb){
+  const entries=C.allModels(state.dataset);
+  const sel=new Set();
+  const vSel=h('select',{},h('option',{value:''},'厂商：全部'),...state.dataset.providers.map(p=>h('option',{value:p.id},p.id)));
+  const sSel=h('select',{});
+  const qIn=h('input',{type:'text',placeholder:'搜索模型'});
+  const list=h('div',{style:'border:1px solid #e7e5e4;border-radius:6px;max-height:300px;overflow-y:auto;padding:4px'});
+  const chips=h('div',{});
+  const state2={v:'',s:'',q:''};
+  const refreshChips=()=>{chips.innerHTML='';
+    if(sel.size)chips.append('已选: ');
+    for(const id of sel)chips.append(h('span',{class:'chip',onclick:()=>{sel.delete(id);refreshChips();refreshList();}},'×'+id));
+    ok.textContent=`确定(${sel.size})`;};
+  const refreshSeries=()=>{sSel.innerHTML='';
+    sSel.append(h('option',{value:''},'系列：全部'));
+    const ss=[...new Set(entries.filter(e=>!state2.v||e.vendor.id===state2.v).map(e=>C.classifySeries(e.model.id)))].sort();
+    ss.forEach(s=>sSel.append(h('option',{value:s,selected:state2.s===s},s)));
+  };
+  const refreshList=()=>{list.innerHTML='';
+    const q=state2.q.toLowerCase();
+    const shown=entries.filter(e=>(!state2.v||e.vendor.id===state2.v)
+      &&(!state2.s||C.classifySeries(e.model.id)===state2.s)
+      &&(!q||e.model.id.includes(q)||(e.model.name||'').toLowerCase().includes(q)));
+    if(!shown.length){list.append(h('div',{class:'dim'},'无匹配'));return;}
+    for(const e of shown){
+      const cb=h('input',{type:'checkbox',checked:sel.has(e.model.id)});
+      cb.onchange=()=>{cb.checked?sel.add(e.model.id):sel.delete(e.model.id);refreshChips();};
+      list.append(h('label',{style:'display:block;padding:2px 4px;cursor:pointer'},cb,` ${e.model.id} `,h('small',{class:'dim'},`${e.vendor.id} · ${e.model.name||''}`)));
+    }
+  };
+  vSel.onchange=()=>{state2.v=vSel.value;state2.s='';refreshSeries();refreshList();};
+  sSel.onchange=()=>{state2.s=sSel.value;refreshList();};
+  qIn.oninput=()=>{state2.q=qIn.value;refreshList();};
+  const ok=h('button',{class:'primary',onclick:()=>{if(!sel.size)return;d.hidden=true;cb([...sel]);}},'确定(0)');
   const d=$('#drawer');d.innerHTML='';d.hidden=false;
-  d.append(h('h3',{},title),row('模型',input,'（可输入过滤或下拉选择）'),
+  refreshSeries();refreshList();refreshChips();
+  d.append(h('h3',{},title+'（可多选）'),
+    h('div',{class:'row'},vSel,sSel,qIn),list,chips,
     h('div',{class:'foot'},h('button',{onclick:()=>d.hidden=true},'取消'),ok));
-  input.focus();
+  qIn.focus();
 }
 
 function nodeEl(lvl,content,ops,off){
@@ -408,9 +437,8 @@ function editProvider(st,pr){
     if(!scope.vendorIds.length&&!scope.series.length)sChips.append(h('small',{class:'dim'},'厂商与系列全不选=全量'));
     mList.append(h('b',{},'或精确模型白名单: '));
     (scope.modelIds||[]).forEach(id=>mList.append(h('span',{class:'chip',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},'×'+id)));
-    const mIn=inp('');mIn.placeholder='输入模型id回车添加';mIn.setAttribute('list','allModels');mIn.style.width='200px';
-    mIn.onkeydown=e=>{if(e.key==='Enter'&&mIn.value.trim()){scope.modelIds.push(mIn.value.trim());mIn.value='';renderScope();}};
-    mList.append(mIn);
+    mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
+      ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});renderScope();})},'＋选择模型'));
     // 厂商级分档开关随所选厂商刷新
     vs.innerHTML='';vs.append(h('b',{},'厂商级分档开关'+(scope.vendorIds.length?'':'（未选厂商时无项）')));
     for(const vid of scope.vendorIds){
