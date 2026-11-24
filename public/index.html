@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.30 · bef0561</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.31 · 76b2dd2</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -146,6 +146,7 @@
   </section>
 
   <div class="drawer" id="drawer" hidden></div>
+  <div id="picker" hidden style="position:fixed;top:8%;left:50%;transform:translateX(-50%);width:520px;max-width:94vw;max-height:80vh;overflow-y:auto;background:#fff;border:1px solid #57534e;border-radius:8px;padding:14px;box-shadow:0 8px 40px #0005;z-index:25"></div>
 </main>
 <script src="calc.js"></script>
 <script src="demo-config.js"></script>
@@ -388,7 +389,7 @@ function pickModels(title,cb){
   };
   qIn.oninput=refreshList;
   const ok=h('button',{class:'primary',onclick:()=>{if(!sel.size)return;d.hidden=true;cb([...sel]);}},'确定(0)');
-  const d=$('#drawer');d.innerHTML='';d.hidden=false;
+  const d=$('#picker');d.innerHTML='';d.hidden=false;
   refreshList();refreshChips();
   d.append(h('h3',{},title+'（可多选）'),
     h('div',{class:'row'},qIn,h('small',{class:'dim'},'勾厂商/系列框=全选；点模型chip=单选；▣=半选')),
