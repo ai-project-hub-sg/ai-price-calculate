@@ -256,18 +256,21 @@ class _LocalProxy:
 
 
 def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0,
-               validate=None) -> dict:
+               validate=None, on_target=None) -> dict:
     """单节点探测一组 URL，返回 {label, kind, results: {key: {...}}}。
 
     validate(key, body)->bool 非 None 时对 200 响应做内容校验（如"能解析出
     价目行"），校验不过记 error 不当可用——地区限制/反爬页也是 200，只看
     状态码会误判节点可用。
+    on_target(key) 开始抓某个目标前回调——组合进度（节点→厂家）用。
     """
     out = {"node": node.label, "kind": node.kind, "results": {}}
     try:
         with _LocalProxy(node) as lp:
             out["proxy"] = f"http://127.0.0.1:{lp.port}"
             for key, url in urls.items():
+                if on_target:
+                    on_target(key)
                 r = fetch_url(url, lp.port, timeout=timeout)
                 if (validate and r.get("status") == 200
                         and not validate(key, r.get("body") or b"")):
@@ -331,7 +334,12 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                          "total": len(warm), "tested": len(report),
                          "pending": list(pending)})
         try:
-            absorb(probe_node(n, dict(pending), timeout, validate), n)
+            absorb(probe_node(
+                n, dict(pending), timeout, validate,
+                on_target=(lambda key, _n=n, _i=wi + 1: on_progress(
+                    {"phase": "warm", "node": _n.label, "target": key,
+                     "idx": _i, "total": len(warm), "tested": len(report),
+                     "pending": list(pending)})) if on_progress else None), n)
         except Exception as e:
             absorb({"node": n.label, "error": str(e), "results": {}}, n)
         if on_progress:
@@ -350,8 +358,13 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                              "total": len(rest), "tested": len(report),
                              "pending": list(pending)})
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(probe_node, n, snapshot, timeout, validate): n
-                    for n in batch}
+            futs = {ex.submit(
+                probe_node, n, snapshot, timeout, validate,
+                (lambda key, _n=n, _i=i + j + 1: on_progress(
+                    {"phase": "probe", "node": _n.label, "target": key,
+                     "idx": _i, "total": len(rest), "tested": len(report),
+                     "pending": list(pending)})) if on_progress else None): n
+                for j, n in enumerate(batch)}
             for fut in as_completed(futs):
                 n = futs[fut]
                 try:

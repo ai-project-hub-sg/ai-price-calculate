@@ -149,11 +149,20 @@ type ProbeReport struct {
 	node    Node              // 对应的 Node 对象（不进 JSON）
 }
 
+// ProbeHooks 探测事件回调（均可为nil）：
+// OnNodeStart 节点开测；OnTarget 节点开始抓某个目标（组合进度用）；
+// OnProgress 批次完成。
+type ProbeHooks struct {
+	OnNodeStart func(label string, idx, total int)
+	OnTarget    func(nodeLabel, key string)
+	OnProgress  func(tested int, pending []string)
+}
+
 // ProbeNode 单节点探测一组 URL。validate 非nil时对 200 响应做内容校验
 // （如"能解析出价目行"），校验不过记 error 不当可用——地区限制/反爬页
 // 也是 200，只看状态码会误判节点可用。
 func ProbeNode(n Node, urls map[string]string, timeoutMS int,
-	validate func(key string, body []byte) bool) ProbeReport {
+	validate func(key string, body []byte) bool, hooks *ProbeHooks) ProbeReport {
 	out := ProbeReport{Node: n.Label(), Kind: n.Kind, node: n, Results: map[string]Result{}}
 	lb, err := StartNode(n)
 	if err != nil {
@@ -162,6 +171,9 @@ func ProbeNode(n Node, urls map[string]string, timeoutMS int,
 	}
 	defer lb.Close()
 	for key, u := range urls {
+		if hooks != nil && hooks.OnTarget != nil {
+			hooks.OnTarget(n.Label(), key)
+		}
 		r := FetchURL(u, lb.Port, timeoutMS)
 		if validate != nil && r.Status == 200 && !validate(key, r.Body) {
 			r.Error = "返回内容校验未通过（疑似反爬/地区限制页）"
@@ -194,12 +206,11 @@ type ProbeResult struct {
 }
 
 // FindWorking 按候选顺序探测节点，为每个目标 URL 找首个可用节点（4 并发批）。
-// onNodeStart 每个节点开测时回调（label, 全局序号, 总候选数）——供进度展示；
-// 4 个一并发，序号是"开测序"而非"完成序"。
+// hooks.OnNodeStart 每个节点开测时回调（label, 全局序号, 总候选数）——序号是
+// "开测序"而非"完成序"。
 func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int, timeoutMS int,
 	validate func(key string, body []byte) bool,
-	onNodeStart func(label string, idx, total int),
-	onProgress func(tested int, pending []string)) ProbeResult {
+	hooks ProbeHooks) ProbeResult {
 	if maxNodes > 0 && len(nodes) > maxNodes {
 		nodes = nodes[:maxNodes]
 	}
@@ -224,8 +235,8 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 		reps := make([]ProbeReport, len(batch))
 		var wg sync.WaitGroup
 		for j, n := range batch {
-			if onNodeStart != nil {
-				onNodeStart(n.Label(), i+j+1, len(nodes))
+			if hooks.OnNodeStart != nil {
+				hooks.OnNodeStart(n.Label(), i+j+1, len(nodes))
 			}
 			wg.Add(1)
 			go func(j int, n Node) {
@@ -236,7 +247,7 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 							Error: fmt.Sprintf("panic: %v", r), Results: map[string]Result{}}
 					}
 				}()
-				reps[j] = ProbeNode(n, targets, timeoutMS, validate)
+				reps[j] = ProbeNode(n, targets, timeoutMS, validate, &hooks)
 			}(j, n)
 		}
 		wg.Wait()
@@ -251,8 +262,8 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 				}
 			}
 		}
-		if onProgress != nil {
-			onProgress(len(out.Reports), sortedKeys(pending))
+		if hooks.OnProgress != nil {
+			hooks.OnProgress(len(out.Reports), sortedKeys(pending))
 		}
 	}
 	out.Pending = sortedKeys(pending)
@@ -304,7 +315,7 @@ func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeout
 			wg.Add(1)
 			go func(j int, n Node) {
 				defer wg.Done()
-				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS, nil)
+				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS, nil, nil)
 				r := NodeTestResult{ID: n.ID, Name: n.Label(), Kind: n.Kind}
 				if rep.Error != "" {
 					r.Error = rep.Error

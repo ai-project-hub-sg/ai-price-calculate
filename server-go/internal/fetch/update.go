@@ -12,17 +12,18 @@ import (
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/proxypool"
 )
 
-// Progress 结构化进度（job.progress 下发前端）：阶段/当前项/序号/待解数/
-// 当前项开始时间——前端据此渲染"在测哪个厂家/哪个节点/还剩多少/本项耗时"。
+// Progress 结构化进度（job.progress 下发前端）：阶段 + 全部厂家状态列表 +
+// 当前组合（节点→厂家）+ 当前项开始时间——前端据此渲染厂家徽章行与组合耗时，
+// "谁在抓/谁卡住/还剩谁"一目了然。
 type Progress struct {
-	Phase     string `json:"phase"`              // direct|sub|warm|probe|merge
-	Item      string `json:"item,omitempty"`     // 价目源 id 或节点 label
-	ItemIndex int    `json:"itemIndex,omitempty"`
-	ItemTotal int    `json:"itemTotal,omitempty"`
-	Done      int    `json:"done"`               // 已解决价目源数
-	Total     int    `json:"total"`              // 价目源总数
-	Pending   int    `json:"pending,omitempty"`  // 节点阶段待解目标数
-	StartedAt int64  `json:"startedAt"`          // 当前项开始 epoch ms（前端算本项耗时）
+	Phase     string   `json:"phase"`              // direct|sub|warm|probe|merge
+	Item      string   `json:"item,omitempty"`     // 当前活动：direct=厂家id，节点阶段="节点 → 厂家"
+	Current   string   `json:"current,omitempty"`  // 正在抓取的厂家 id（徽章高亮）
+	ItemIndex int      `json:"itemIndex,omitempty"`
+	ItemTotal int      `json:"itemTotal,omitempty"`
+	Targets   []string `json:"targets"`            // 全部价目源（有序）
+	Done      []string `json:"done"`               // 已解决厂家 id
+	StartedAt int64    `json:"startedAt"`          // 当前项开始 epoch ms（前端算本项耗时）
 }
 
 type Options struct {
@@ -59,7 +60,19 @@ func Update(o Options) (map[string]any, error) {
 	if o.SubURL != "" {
 		subDesc = "直连失败 → 代理订阅节点池重试"
 	}
+	fetched := map[string]string{}
+	needProxy := map[string]string{}
+	doneSet := map[string]bool{} // 已解决：直连抓到（fetched）或未知源跳过
+
 	emit := func(p Progress) {
+		// 统一填充：Targets=全部源；Done=已解决厂家 id（待解/未到的都不算）。
+		p.Targets = targets
+		p.Done = []string{} // 对齐规则：列表不输出 null
+		for _, t := range targets {
+			if doneSet[t] {
+				p.Done = append(p.Done, t)
+			}
+		}
 		p.StartedAt = time.Now().UnixMilli()
 		if o.Progress != nil {
 			o.Progress(p)
@@ -74,23 +87,22 @@ func Update(o Options) (map[string]any, error) {
 	report := map[string]any{"fetchedAt": today, "providers": map[string]any{}}
 	provs := report["providers"].(map[string]any)
 
-	fetched := map[string]string{}
-	needProxy := map[string]string{}
-
 	for i, pid := range targets {
 		src, ok := Sources[pid]
 		if !ok { // 显式报告未知源，不静默跳过
 			provs[pid] = map[string]any{"via": "none", "status": 0,
 				"error": "未知 provider id（不在 SOURCES）"}
+			doneSet[pid] = true
 			log(fmt.Sprintf("[%s] 未知 provider id，跳过", pid))
 			continue
 		}
-		emit(Progress{Phase: "direct", Item: pid, ItemIndex: i + 1,
-			ItemTotal: len(targets), Done: len(fetched), Total: len(targets)})
+		emit(Progress{Phase: "direct", Item: pid, Current: pid,
+			ItemIndex: i + 1, ItemTotal: len(targets)})
 		r := proxypool.FetchURL(src.URL, 0, 12_000)
 		pr := map[string]any{"via": "direct", "status": r.Status}
 		if r.Status == 200 && r.Bytes > minPricingBytes {
 			fetched[pid] = string(r.Body)
+			doneSet[pid] = true
 			log(fmt.Sprintf("[%s] 直连成功 %dB", pid, r.Bytes))
 		} else {
 			needProxy[pid] = src.URL
@@ -114,6 +126,7 @@ func Update(o Options) (map[string]any, error) {
 			continue
 		}
 		delete(fetched, pid)
+		delete(doneSet, pid)
 		needProxy[pid] = src.URL
 		provs[pid].(map[string]any)["error"] = "直连返回内容解析为空（疑似地区限制/反爬页）"
 		log(fmt.Sprintf("[%s] 直连内容解析为空，转节点池", pid))
@@ -134,8 +147,7 @@ func Update(o Options) (map[string]any, error) {
 				}
 			}
 			if len(nodes) == 0 {
-				emit(Progress{Phase: "sub", Done: len(fetched), Total: len(targets),
-					Pending: len(needProxy)})
+				emit(Progress{Phase: "sub"})
 				loaded, lerr := proxypool.LoadSubscription(o.SubURL, log)
 				if lerr == nil {
 					nodes = loaded
@@ -178,9 +190,6 @@ func Update(o Options) (map[string]any, error) {
 							if len(needProxy) == 0 {
 								break
 							}
-							emit(Progress{Phase: "warm", Item: n.Label(), ItemIndex: i + 1,
-								ItemTotal: len(usable), Done: len(targets) - len(needProxy),
-								Total: len(targets), Pending: len(needProxy)})
 							probed[proxypool.Key(n)] = true
 							lb, lerr := proxypool.StartNode(n)
 							if lerr != nil {
@@ -190,6 +199,9 @@ func Update(o Options) (map[string]any, error) {
 							}
 							won := false
 							for pid, u := range needProxy {
+								emit(Progress{Phase: "warm", Current: pid,
+									Item: n.Label() + " → " + pid,
+									ItemIndex: i + 1, ItemTotal: len(usable)})
 								r := proxypool.FetchURL(u, lb.Port, 15_000)
 								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
 									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
@@ -213,16 +225,19 @@ func Update(o Options) (map[string]any, error) {
 					}
 					log(fmt.Sprintf("节点池探测 %d 个目标（候选节点 %d 个，上限 %d）…",
 						len(needProxy), len(rest), maxNodes))
-					pendingNow := len(needProxy) // onNodeStart 时 pending 未知，用最近一次批次值
 					probe := proxypool.FindWorking(rest, needProxy, maxNodes, 4, 8_000, validate,
-						func(label string, idx, total int) {
-							emit(Progress{Phase: "probe", Item: label, ItemIndex: idx,
-								ItemTotal: total, Done: len(targets) - pendingNow,
-								Total: len(targets), Pending: pendingNow})
-						},
-						func(tested int, pending []string) {
-							pendingNow = len(pending)
-							log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
+						proxypool.ProbeHooks{
+							OnNodeStart: func(label string, idx, total int) {
+								emit(Progress{Phase: "probe", Item: label,
+									ItemIndex: idx, ItemTotal: total})
+							},
+							OnTarget: func(nodeLabel, key string) {
+								emit(Progress{Phase: "probe", Current: key,
+									Item: nodeLabel + " → " + key})
+							},
+							OnProgress: func(tested int, pending []string) {
+								log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
+							},
 						})
 					if o.NodeCache != nil {
 						o.NodeCache.Absorb(o.SubURL, probe.Reports)
@@ -241,6 +256,7 @@ func Update(o Options) (map[string]any, error) {
 					}
 					if len(body) > minPricingBytes {
 						fetched[pid] = string(body)
+						doneSet[pid] = true
 						delete(pr, "error")
 						log(fmt.Sprintf("[%s] 经节点 %s 成功 %dB", pid, win.Label, len(body)))
 					}
@@ -285,7 +301,7 @@ func Update(o Options) (map[string]any, error) {
 	}
 
 	if len(changed) > 0 && !o.DryRun {
-		emit(Progress{Phase: "merge", Done: len(targets), Total: len(targets)})
+		emit(Progress{Phase: "merge"})
 		// 对齐 Python：备份失败则中止，禁止无备份覆盖
 		if bak, err := os.ReadFile(o.ModelsPath); err != nil {
 			return nil, fmt.Errorf("读 models.json 备份源失败: %w", err)

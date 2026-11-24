@@ -424,7 +424,10 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     "在测哪个厂家/哪个节点/还剩多少/本项耗时"。无回调不影响行为。"""
     def emit(phase: str, **kw):
         if progress:
-            progress({"phase": phase, "startedAt": int(time.time() * 1000), **kw})
+            progress({"phase": phase,
+                      "startedAt": int(time.time() * 1000),
+                      "targets": targets,
+                      "done": [t for t in targets if t in done_set], **kw})
 
     targets = providers or list(SOURCES)
     dataset = json.load(open(MODELS_PATH, encoding="utf-8"))
@@ -432,14 +435,16 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
 
     fetched: dict[str, str] = {}      # pid -> markdown text
     need_proxy: dict[str, str] = {}   # pid -> url
+    done_set: set[str] = set()        # 已解决厂家（直连抓到/节点胜出）
 
     for i, pid in enumerate(targets):
         src = SOURCES[pid]
-        emit("direct", item=pid, itemIndex=i + 1, itemTotal=len(targets),
-             done=len(fetched), total=len(targets))
+        emit("direct", item=pid, current=pid, itemIndex=i + 1,
+             itemTotal=len(targets))
         r = nodepool.fetch_url(src["url"], None, timeout=12)
         if r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY:
             fetched[pid] = r["body"].decode("utf-8", "replace")
+            done_set.add(pid)
             report["providers"][pid] = {"via": "direct", "status": 200}
             log(f"[{pid}] 直连成功 {r['bytes']}B")
         else:
@@ -461,6 +466,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
             empty = False
         if empty:
             del fetched[pid]
+            done_set.discard(pid)
             need_proxy[pid] = src["url"]
             report["providers"][pid].update(
                 {"error": "直连返回内容解析为空（疑似地区限制/反爬页）"})
@@ -469,11 +475,13 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     if need_proxy:
         log(f"节点池探测 {len(need_proxy)} 个目标（上限 {max_nodes} 节点）…")
         def _onp(p: dict):
-            if "node" in p:  # 节点开测事件 → 结构化进度
+            if "target" in p:  # 节点开始抓某目标 → 组合进度
+                emit(p.get("phase", "probe"), item=f"{p['node']} → {p['target']}",
+                     current=p["target"], itemIndex=p.get("idx"),
+                     itemTotal=p.get("total"))
+            elif "node" in p:  # 节点开测事件
                 emit(p.get("phase", "probe"), item=p["node"],
-                     itemIndex=p["idx"], itemTotal=p["total"],
-                     done=len(targets) - len(p["pending"]),
-                     total=len(targets), pending=len(p["pending"]))
+                     itemIndex=p.get("idx"), itemTotal=p.get("total"))
             else:  # 批次完成事件 → 日志
                 log(f"  已测 {p['tested']} 节点，待解 {p['pending']}")
 
@@ -493,6 +501,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
                     continue
             if len(body) > MIN_USEFUL_BODY:
                 fetched[pid] = body.decode("utf-8", "replace")
+                done_set.add(pid)
                 report["providers"][pid] = {"via": f"node:{win['node']}",
                                             "status": 200}
                 log(f"[{pid}] 经节点 {win['node']} 成功 {len(body)}B")
@@ -521,7 +530,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
             f"源中缺失 {len(res['missingInSource'])}")
 
     if changed and not dry_run:
-        emit("merge", done=len(targets), total=len(targets))
+        emit("merge")
         shutil.copy2(MODELS_PATH, MODELS_PATH + ".bak")
         with open(MODELS_PATH, "w", encoding="utf-8") as f:
             json.dump(dataset, f, ensure_ascii=False, indent=2)

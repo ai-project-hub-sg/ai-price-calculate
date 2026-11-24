@@ -979,17 +979,22 @@ function bindGlobal(){
               style:'border:1px solid #ddd;background:#fafafa;padding:4px 8px;margin:2px 0'});
               box.prepend(prog);}
             prog.innerHTML='';
+            const doneN=(p.done||[]).length;
             prog.append(h('div',{},`⟳ 更新中 · 总耗时 ${totalS}s`+
-              (p.total?` · 价目 ${p.done||0}/${p.total}`:'')));
-            if(p.total){const pct=Math.round(100*(p.done||0)/p.total);
-              prog.append(h('div',{style:'height:4px;background:#eee;margin:3px 0'},
-                h('div',{style:`width:${pct}%;height:100%;background:#3b82f6`})));}
+              (p.targets?` · 已解决 ${doneN}/${p.targets.length}`:'')));
+            if(p.targets&&p.targets.length){ // 厂家徽章行：✓完成 ⟳在抓 …等待
+              const chips=h('div',{style:'display:flex;gap:4px;flex-wrap:wrap;margin:3px 0'});
+              for(const t of p.targets){
+                const d=(p.done||[]).includes(t), cur=p.current===t;
+                chips.append(h('span',{style:'padding:0 6px;border-radius:3px;font-size:11px;'+
+                  (cur?'background:#2563eb;color:#fff':d?'background:#dcfce7;color:#166534':'background:#eee;color:#666')},
+                  (d?'✓ ':cur?'⟳ ':'… ')+t));}
+              prog.append(chips);}
             if(p.phase){
               const idx=p.itemIndex?`（${p.itemIndex}/${p.itemTotal}）`:'';
-              const pend=(p.phase==='warm'||p.phase==='probe')&&p.pending!=null?` · 待解 ${p.pending}`:'';
               const itemS=p.startedAt?(((Date.now()-p.startedAt)/1000)|0):0;
               prog.append(h('div',{},
-                `▶ ${PHASE[p.phase]||p.phase}${p.item?' '+p.item:''}${idx}${pend} · 本项 ${itemS}s`));}
+                `▶ ${PHASE[p.phase]||p.phase}${p.item?' '+p.item:''}${idx} · 本项 ${itemS}s`));}
             const last=(j.log||[]).slice(-1)[0];
             if(last)prog.append(h('div',{style:'opacity:.7'},'最近: '+last));
             return;}
