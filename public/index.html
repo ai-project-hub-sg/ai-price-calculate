@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.14 · 26b348e</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.15 · 5a41a82</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -433,7 +433,8 @@ function editStation(st){
   const scope=JSON.parse(JSON.stringify(st.scope||{vendorIds:[],series:[],modelIds:[]}));
   const scEd=scopeEditor(scope);
   drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
-    row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp),row('启用',en),row('备注',notes),
+    row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp,h('small',{class:'dim'},'按模型档价计费；关掉则统一按首档')),
+    row('启用站点',en,h('small',{class:'dim'},'不勾=该站停用，不产结果行')),row('备注',notes),
     mx.el,h('div',{class:'box'},h('b',{},'提供范围（站点能提供的上限；提供商只能在其内选择）'),scEd.el),
     h('div',{class:'hint'},'配比继承：模型覆盖 > 提供商 > 站 > 档案场景；改名时默认提供商若仍与旧站名同名则联动改名')],
     ()=>{const d=+disc.value;if(!(d>0&&d<=10)){alert('折扣须在(0,10]');return false;}
@@ -456,7 +457,7 @@ function scopeEditor(scope,onVendorChange){
       onclick:()=>{Object.keys(vendors).forEach(k=>delete vendors[k]);refresh();}},'全部'));
     for(const v of state.dataset.providers){
       const sel=v.id in vendors;
-      const grp=h('span',{style:'white-space:nowrap'});
+      const grp=h('div',{style:'display:flex;flex-wrap:wrap;gap:2px;align-items:center'});
       grp.append(h('span',{class:'chip'+(sel?' on':''),onclick:()=>{sel?delete vendors[v.id]:vendors[v.id]=[];refresh();}},v.id));
       if(sel){
         const sels=vendors[v.id];
@@ -469,7 +470,7 @@ function scopeEditor(scope,onVendorChange){
             on?sels.splice(sels.indexOf(s),1):sels.push(s);refresh();}},s));
         }
       }
-      vChips.append(grp,' ');
+      vChips.append(grp);
     }
     const wl=scope.modelIds||[];
     mList.append(h('div',{class:'dim',style:'font-size:12px'},
