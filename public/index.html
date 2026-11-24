@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.19 · 93e753f</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.20 · bc4199a</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -456,7 +456,6 @@ function scopeEditor(scope,onVendorChange,parentScope){
   }
   const allIds=models.map(e=>e.model.id);
   const sel=new Set(models.filter(e=>C.inScope(scope,e.model,e.vendor.id)).map(e=>e.model.id));
-  const open=new Set();           // 展开的厂商
   const qIn=inp('');qIn.placeholder='搜索模型';
   const stat=h('span',{class:'dim',style:'font-size:12px'});
   const box=h('div',{});
@@ -496,36 +495,53 @@ function scopeEditor(scope,onVendorChange,parentScope){
     panel.style.display=showing?'none':'block';openScopeDrop=showing?null:panel;}});
   const panel=h('div',{class:'pop',style:'display:none;min-width:340px;max-width:420px;max-height:380px'});
   const commit=()=>{derive();btn.textContent=btnLabel();renderTree();onVendorChange&&onVendorChange(Object.keys(scope.vendors));};
+  const path={v:null,s:null};
+  const col='width:132px;max-height:280px;overflow-y:auto;border-right:1px solid #e7e5e4;padding:2px 4px;flex:none';
+  const headRow=(title,ids,invOnly)=>h('div',{style:'font-size:11px;color:#78716c;border-bottom:1px solid #f5f5f4;margin-bottom:2px;display:flex;gap:3px;align-items:center'},
+    h('span',{style:'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'},title),
+    invOnly?'':h('button',{style:'font-size:10px;padding:0 3px',onclick:()=>{ids.forEach(i=>sel.add(i));commit();}},'全'),
+    h('button',{style:'font-size:10px;padding:0 3px',onclick:()=>{ids.forEach(i=>sel.has(i)?sel.delete(i):sel.add(i));commit();}},'反'));
+  const itemRow=(cb,label,active,onOpen)=>{
+    const r=h('div',{style:`display:flex;align-items:center;gap:4px;padding:1px 2px;border-radius:3px;font-size:12px;${onOpen?'cursor:pointer;':''}${active?'background:#eff6ff;':''}`},cb,
+      h('span',{style:'flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis',title:label},label));
+    if(onOpen){r.append(h('span',{class:'dim',style:'font-size:10px'},'▸'));r.onclick=e=>{if(e.target!==cb)onOpen();};}
+    return r;
+  };
+  const leafRow=id=>{const cb=h('input',{type:'checkbox',checked:sel.has(id)});
+    cb.onchange=()=>{cb.checked?sel.add(id):sel.delete(id);commit();};return itemRow(cb,id);};
   const renderTree=()=>{
     box.innerHTML='';upds.length=0;
-    const q=qIn.value.toLowerCase();let any=false;
     stat.textContent=`已选 ${sel.size}/${allIds.length}（全不勾=不限制）`;
+    const q=qIn.value.toLowerCase();
+    if(q){
+      const c=h('div',{style:col+';width:auto;min-width:260px'});let n=0;
+      for(const e of models)if(e.model.id.toLowerCase().includes(q)){n++;c.append(leafRow(e.model.id));}
+      box.append(n?c:h('div',{class:'dim',style:'padding:8px'},'无匹配'));return;
+    }
+    const wrap=h('div',{style:'display:flex'});
+    const c1=h('div',{style:col});
+    c1.append(headRow('厂商',allIds));
     for(const [vid,sm] of tree){
       const vIds=[...sm.values()].flat().map(e=>e.model.id);
-      if(q&&!vIds.some(id=>id.toLowerCase().includes(q)))continue;
-      any=true;
-      const expanded=!!q||open.has(vid);
-      const body=h('div',{});
-      const arrow=h('span',{style:'cursor:pointer;user-select:none'},expanded?'▾ ':'▸ ');
-      arrow.onclick=()=>{open.has(vid)?open.delete(vid):open.add(vid);renderTree();};
-      box.append(h('div',{style:'font-weight:600;background:#f5f5f4;padding:2px 4px'},tri(vIds),arrow,` ${vid} `,
-        h('button',{style:'font-size:10px;padding:0 4px',onclick:()=>{vIds.forEach(i=>sel.add(i));commit();}},'全'),
-        h('button',{style:'font-size:10px;padding:0 4px',onclick:()=>{vIds.forEach(i=>sel.has(i)?sel.delete(i):sel.add(i));commit();}},'反')),body);
-      if(!expanded){body.style.display='none';continue;}
-      for(const [s,ms] of sm){
-        const sIds=ms.map(e=>e.model.id);
-        if(q&&!sIds.some(id=>id.toLowerCase().includes(q)))continue;
-        const line=h('div',{style:'margin-left:20px'},tri(sIds),h('span',{style:'font-weight:500'},` ${s} `),
-          h('button',{style:'font-size:10px;padding:0 4px',onclick:()=>{sIds.forEach(i=>sel.has(i)?sel.delete(i):sel.add(i));commit();}},'反'));
-        for(const e of ms){
-          if(q&&!e.model.id.toLowerCase().includes(q))continue;
-          line.append(h('span',{class:'chip'+(sel.has(e.model.id)?' on':''),title:e.model.name||'',
-            onclick:()=>{sel.has(e.model.id)?sel.delete(e.model.id):sel.add(e.model.id);commit();}},e.model.id));
-        }
-        body.append(line);
+      c1.append(itemRow(tri(vIds),vid,path.v===vid,()=>{path.v=vid;path.s=null;renderTree();}));
+    }
+    wrap.append(c1);
+    if(path.v&&tree.has(path.v)){
+      const sm=tree.get(path.v),vIds=[...sm.values()].flat().map(e=>e.model.id);
+      const c2=h('div',{style:col});
+      c2.append(headRow(path.v,vIds));
+      for(const [s,ms] of sm)
+        c2.append(itemRow(tri(ms.map(e=>e.model.id)),s,path.s===s,()=>{path.s=s;renderTree();}));
+      wrap.append(c2);
+      if(path.s&&sm.has(path.s)){
+        const ms=sm.get(path.s),sIds=ms.map(e=>e.model.id);
+        const c3=h('div',{style:col+';border-right:none'});
+        c3.append(headRow(`${path.s}(${ms.length})`,sIds,true));
+        for(const e of ms)c3.append(leafRow(e.model.id));
+        wrap.append(c3);
       }
     }
-    if(!any)box.append(h('div',{class:'dim'},'无匹配'));
+    box.append(wrap);
     upds.forEach(f=>f());
   };
   qIn.oninput=renderTree;
