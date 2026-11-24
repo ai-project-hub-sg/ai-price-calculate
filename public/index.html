@@ -124,6 +124,7 @@
   <div class="drawer" id="drawer" hidden></div>
 </main>
 <script src="calc.js"></script>
+<script src="demo-config.js"></script>
 <script>
 "use strict";
 const C = window.Calc, $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
@@ -156,14 +157,14 @@ const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
 
 async function boot(){
   try { const d=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(d) state.dataset=d; } catch(e){}
-  try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles) state.config=c; } catch(e){}
+  try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles&&c.profiles.length) state.config=c; } catch(e){}
   try {
     const [m,c]=await Promise.all([fetch('/api/models'),fetch('/api/config')]);
     if(m.ok){state.dataset=await m.json();state.backend=true;localStorage.setItem(LS_KEY,JSON.stringify(state.dataset));}
     if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
   } catch(e){}
   if(!state.dataset) state.dataset=FALLBACK_DATA;
-  if(!state.config) state.config=C.defaultConfig();
+  if(!state.config) state.config=window.DEMO_CONFIG?JSON.parse(JSON.stringify(window.DEMO_CONFIG)):C.defaultConfig();
   if(!state.backend) showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
   await loadFx();
   bindGlobal(); render();
