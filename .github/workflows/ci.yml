@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Python syntax check
+        run: python -m compileall -q server
+
+      - name: Frontend JS syntax check
+        run: |
+          node --check public/calc.js
+          node --check public/demo-config.js
+          node -e "
+            const fs=require('fs'),vm=require('vm');
+            const s=fs.readFileSync('public/index.html','utf8');
+            const ms=[...s.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]).filter(t=>t.trim());
+            ms.forEach((src,i)=>new vm.Script(src,{filename:'inline-'+i+'.js'}));
+            console.log('inline scripts parsed OK:',ms.length);
+          "
+
+      - name: Server smoke test
+        run: |
+          python -m server.app --port 8787 &
+          sleep 2
+          curl -fsS http://127.0.0.1:8787/ > /dev/null
+          curl -fsS http://127.0.0.1:8787/api/models | grep -q '"providers"'
+          curl -fsS -X PUT http://127.0.0.1:8787/api/config \
+            -H 'Content-Type: application/json' \
+            --data '{"version":2,"profiles":[{"id":"ci","name":"ci","scenario":{},"stations":[]}],"activeProfileId":"ci"}'
+          curl -fsS http://127.0.0.1:8787/api/config | grep -q '"ci"'
+          test ! -f data/config.json.tmp || (echo "tmp file left behind" && exit 1)
+          rm -f data/config.json
+          kill %1

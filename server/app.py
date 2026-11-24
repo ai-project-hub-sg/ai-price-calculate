@@ -158,8 +158,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] == "/api/config":
             cfg = self._body()
             os.makedirs(DATA, exist_ok=True)
-            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            tmp = CONFIG_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, CONFIG_PATH)   # 同卷原子替换，写一半被kill也不会留坏文件
             self._json({"ok": True})
         else:
             self._send(404, b"not found", "text/plain")
