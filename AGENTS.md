@@ -15,7 +15,7 @@
 - 目标：本地运行的 AI 中转站价格归一化计算器——把「官方价 × 折扣 × 上下文分档 × token 配比」归一化为可横向比较的每 1M tokens 单价，双币（不换汇/换汇）展示。用户：中转站（one-api/new-api 类）个人用户。非目标：抓取中转站实时价目、按次/多模态计费、多用户同步。
 - 类型：桌面优先的本地 Web 工具。前端=纯 HTML+JS 单文件式（`public/index.html`）+ 独立纯计算模块（`public/calc.js`，供 node:test 复用）；后端=Python 标准库零依赖（`server/app.py` http.server）；抓取器=`server/fetcher.py`（官方 .md 适配器）+ `server/nodepool.py`（v2rayN 节点池，VLESS+Reality→HY2，独立 xray/sing-box 端口，不改 v2rayN 配置）；持久化=`data/config.json` JSON 文件；运行=`python -m server.app --port 8787`。
 - 前端复杂度：低—中（数据表+表单工具，无实时/角色/动画要求）。
-- 关键目录：`public/`（前端）、`server/`（后端）、`data/`（价目+运行时配置）、`tests/`、`design/wireframes/`、`docs/`。
+- 关键目录：`public/`（前端）、`server/`（Python 后端，参考实现）、`server-go/`（Go 版后端，单二进制部署目标）、`data/`（价目+运行时配置）、`tests/`、`design/wireframes/`、`docs/`。
 - 每次开始先读：本文件当前阶段表 → `docs/PRD.md`、`docs/ARCHITECTURE.md`。
 - 详细发现证据与待确认项：`docs/PROJECT_DISCOVERY.md`（含价目调研来源与冲突项 R2）。
 
@@ -24,7 +24,7 @@
 | 字段 | 当前值 |
 |---|---|
 | 当前阶段/状态 | A 低保真 —— **产物已出，待线框审核** |
-| 本阶段允许修改 | `docs/`、`design/`、`data/models.json`、`server/`；`public/`、`tests/` 待线框门后创建 |
+| 本阶段允许修改 | `docs/`、`design/`、`data/models.json`、`server/`、`server-go/`、`public/`；`tests/` 待线框门后创建 |
 | 审核产物与版本 | `docs/WIREFRAMES.md` + `design/wireframes/index.html`（v0.2：5 级树、多档案、汇总页） |
 | 最近明确批准 | 跳过高保真；calc.js 保留；五级层级（账户→站→提供商→厂商→模型）；提供商≥1 且默认与站同名；层级复制；多配置档案；汇总页排序+组合筛选 |
 | 未决问题/风险 | R1 价目时效（F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认 |
@@ -71,6 +71,9 @@
 | 价目更新 | `npm run update-pricing`（= `python -m server.fetcher`） | DEVELOPMENT §2 | ✅ 已实测：8 源全通、145 模型合并写回 |
 | 节点池 | `python -m server.nodepool [N]` | DEVELOPMENT §2 | ✅ 已实测：vless-reality/hy2 候选正确、xray 端口可达 |
 | 测试 | `npm test`（= `node --test tests/`） | DEVELOPMENT §2 | 未实现 |
+| Go 构建 | `cd server-go && go build -o aipc-server.exe ./cmd/server`（前端需先 `go run ./tools/syncassets`） | ARCHITECTURE §10 | ✅ 已实测：48.9MB 二进制、端到端跑通 |
+| Go 测试 | `cd server-go && go test ./internal/fetch` | ARCHITECTURE §10 | ✅ 7 解析器 vs Python 基准一致 |
+| Go 交叉编译 | `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server` | ARCHITECTURE §10.6 | 未实跑 |
 
 未运行不宣称通过；报告区分本次引入/既存/环境限制。
 

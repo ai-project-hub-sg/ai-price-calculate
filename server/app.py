@@ -47,6 +47,7 @@ _JOBS_LOCK = threading.Lock()
 
 
 def _read_json(path: str, default):
+    """宽松读：仅用于可再生的缓存文件（fx-cache）。"""
     try:
         with open(path, encoding="utf-8") as f:
             return json.load(f)
@@ -54,13 +55,22 @@ def _read_json(path: str, default):
         return default
 
 
+def _read_json_strict(path: str):
+    """严格读：用户数据文件损坏时抛错返回 500，不静默降级
+    （静默降级会让下一次写回无声覆盖损坏数据）。"""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def _fx() -> dict:
     cache = _read_json(FX_CACHE, None)
     if cache and time.time() - cache.get("ts", 0) < FX_TTL:
         return {**cache["data"], "cached": True}
-    req = urllib.request.Request(FX_URL, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        payload = json.loads(r.read())
+    # 严格直连（nodepool.fetch_url 显式空 ProxyHandler，不读环境变量代理）
+    r = nodepool.fetch_url(FX_URL, None, timeout=10)
+    if r["status"] != 200:
+        raise RuntimeError(f"汇率源 HTTP {r['status']} {r.get('error','')}")
+    payload = json.loads(r["body"])
     data = {"rate": payload["rates"]["CNY"], "source": FX_URL,
             "fetchedAt": payload.get("time_last_update_utc", "")}
     os.makedirs(DATA, exist_ok=True)
@@ -123,9 +133,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/api/models":
-            self._json(_read_json(os.path.join(DATA, "models.json"), {}))
+            try:
+                self._json(_read_json_strict(os.path.join(DATA, "models.json")))
+            except FileNotFoundError:
+                self._json({})
+            except Exception as e:
+                self._json({"error": f"models.json 解析失败: {e}"}, 500)
         elif path == "/api/config":
-            self._json(_read_json(CONFIG_PATH, DEFAULT_CONFIG))
+            try:
+                self._json(_read_json_strict(CONFIG_PATH))
+            except FileNotFoundError:
+                self._json(DEFAULT_CONFIG)
+            except Exception as e:
+                self._json({"error": f"config.json 解析失败: {e}"}, 500)
         elif path == "/api/fx":
             try:
                 self._json(_fx())

@@ -158,10 +158,14 @@ def _wait_listen(port: int, proc: subprocess.Popen, timeout: float = 4.0) -> boo
 
 
 def fetch_url(url: str, proxy_port: int | None, timeout: float = 10.0) -> dict:
-    """经指定本地代理端口（None=直连）抓取，返回 {status, bytes, ms, error}。"""
+    """经指定本地代理端口抓取，返回 {status, bytes, ms, error}。
+
+    proxy_port=None → 严格直连：显式空 ProxyHandler 关闭 urllib 对
+    HTTP(S)_PROXY 环境变量的隐式读取（显式原则，勿移除）。"""
     handlers = [urllib.request.ProxyHandler(
         {"http": f"http://127.0.0.1:{proxy_port}",
-         "https": f"http://127.0.0.1:{proxy_port}"})] if proxy_port else []
+         "https": f"http://127.0.0.1:{proxy_port}"})] if proxy_port \
+        else [urllib.request.ProxyHandler({})]
     opener = urllib.request.build_opener(*handlers)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
     t0 = time.time()

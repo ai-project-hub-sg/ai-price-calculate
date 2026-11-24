@@ -18,6 +18,7 @@
   .bar label{display:flex;gap:4px;align-items:center;white-space:nowrap}
   .bar input[type=number],.bar input[type=text]{width:70px}
   .sub{color:#78716c;font-size:11px}
+  .sub.danger{color:#b91c1c}
   .tabs{display:flex;gap:2px;padding:8px 16px 0}
   .tabs button{border-radius:6px 6px 0 0;border-bottom:none;padding:6px 18px}
   .tabs button.on{background:#fff;font-weight:600}
@@ -105,6 +106,8 @@
   <section id="t-official" hidden>
     <div class="toolbar">
       <button class="primary" id="updBtn">⟳ 一键更新官方价目</button>
+      <label class="hint">代理订阅 <input type="text" id="subUrl" placeholder="留空=仅直连"
+        style="width:220px" title="vless+reality / hysteria2 节点订阅地址；价目源直连失败时经节点池重试，需后端支持"></label>
       <span class="hint" id="updInfo"></span>
       <input type="text" id="offSearch" placeholder="搜索模型" style="margin-left:auto">
     </div>
@@ -884,6 +887,8 @@ function bindGlobal(){
   $('#fxRefresh').onclick=()=>loadFx().then(render);
   $('#stNew').onclick=()=>{const n=prompt('站点名');if(!n)return;profile().stations.push(C.newStation(n));render();};
   $('#offSearch').oninput=renderOfficial;
+  $('#subUrl').value=state.config.proxySubscription||'';
+  $('#subUrl').onchange=e=>{state.config.proxySubscription=e.target.value.trim();persist();};
   $('#updBtn').onclick=async()=>{
     const btn=$('#updBtn'),box=$('#updStatus');
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
@@ -908,8 +913,17 @@ function bindGlobal(){
           if(j.status==='done'){
             const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
             log('✓ 更新完成');
-            if(j.report&&j.report.byProvider)for(const [k,v] of Object.entries(j.report.byProvider))
-              log(`　${k}: ${typeof v==='object'?JSON.stringify(v):v}`);
+            const rep=j.report&&(j.report.providers||j.report.byProvider);
+            if(rep)for(const [k,v] of Object.entries(rep)){
+              const parts=[];
+              if(v.via)parts.push('via='+v.via);
+              if(v.error)parts.push('✗ '+v.error);
+              else parts.push(v.action||'status='+v.status);
+              if(v.updated!=null)parts.push(`更新${v.updated} 新增${v.added}`);
+              log(`　${k}: ${parts.join(' · ')}`,v.error?'danger':'');
+            }
+            if(j.report&&j.report.unreachable&&j.report.unreachable.length)
+              log('⚠ 不可达源（直连与代理均失败）: '+j.report.unreachable.join('、'),'danger');
             renderOfficial();
           }else log('✗ 失败: '+(j.error||'未知'),'danger');
         }catch(e){/* 轮询失败下一轮再试 */}

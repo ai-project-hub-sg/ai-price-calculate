@@ -1,0 +1,7 @@
+# 构建产物
+/aipc-server
+/aipc-server.exe
+
+# 前端同步产物（构建时由 tools/syncassets 从 ../public 生成；保留 .gitkeep 使裸 clone 可编译）
+/assets/public/*
+!/assets/public/.gitkeep

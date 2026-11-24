@@ -216,3 +216,71 @@ validateConfig(json) -> {ok, errors[]}                 // F10 导入校验（含
 ## 9. 演化方向（v2+ 预留）
 
 - 站内分组（一个站点多个分组倍率）；输出长度子档（bigmodel.cn 复合口径精确选档）；缓存写入纳入配比；OpenAI Batch/Flex/Fast/Ultrafast 多价目表与 Anthropic/Google Batch 价纳入计算维度；Kimi 页面 JS 渲染的浏览器自动化解析；多场景并排对比视图。
+
+## 10. Go 版后端（`server-go/`，已实现）
+
+定位：**与 Python 版并存的第二后端**，目标是「单静态二进制 + 前端内嵌」部署到 Linux VPS（systemd + nginx 反代），免装 Python 运行时。Python 版（`server/`）继续作为开发机参考实现；两个实现共享 `public/` 前端与 `data/*.json` 数据格式，API 契约一致（§4）。
+
+### 10.1 结构
+
+```
+server-go/
+├─ go.mod                  # module …/server-go；唯一外部依赖 sing-box v1.14.4
+├─ cmd/server/main.go      # aipc-server --host --port --data --public
+├─ assets/                 # //go:embed all:public（构建时由 tools/syncassets 从 /public 同步）
+├─ internal/
+│  ├─ fetch/               # fetcher.py 移植：8 源解析器 + 合并 + canonical-order 写回
+│  │  ├─ providers.go      #   8 个厂商 .md 价目表解析器（与 Python 逐行对应）
+│  │  ├─ update.go         #   抓取编排 + merge + Dataset 写回（.bak 备份）
+│  │  ├─ marshal.go        #   canonical-order marshal + 未动子树原字节直通
+│  │  └─ parse_test.go     #   对照测试：testdata/ 真实样本 vs Python 基准输出
+│  ├─ proxypool/           # nodepool.py 的替代设计（不读 v2rayN）
+│  │  ├─ subscription.go   #   订阅 URL → base64 → vless/hysteria2 URI → sing-box outbound JSON
+│  │  └─ pool.go           #   进程内 sing-box（include.Context）+ 并发探测 FindWorking
+│  └─ httpsrv/server.go    # app.py 移植：全部 REST 端点 + 静态服务 + 后台 job 表
+└─ tools/syncassets/       # 构建辅助：public/ → assets/public/（embed 不能引用父目录）
+```
+
+### 10.2 节点获取方式变更（vs nodepool.py）
+
+Python 版 nodepool 硬编码 Windows v2rayN（读 sqlite 节点库 + 拉起 xray/sing-box 子进程）。Go 版改为：**用户在 Web 界面「官方价目」页填代理订阅地址**（`config.proxySubscription`），服务端拉订阅 → 解析 `vless://`/`hysteria2://` URI → 组装 sing-box outbound 配置 → **进程内起 sing-box**（Go 库嵌入，零外部进程/文件）监听 127.0.0.1 随机端口 → 逐个节点探测可达出口。`/api/nodes` 返回订阅派生的节点清单（id/名称/类型/地址，不含凭据），语义与 Python 版（v2rayN 候选清单）不同但字段形态兼容。
+
+获取回退链（每个源独立）：**严格直连 → 节点池（配置了订阅才尝试）→ 报错**。订阅本身的拉取固定直连（鸡生蛋：订阅不可达时无从知道哪个节点能用），失败明确报错不静默。
+
+### 10.3 显式优先原则（explicit over implicit）
+
+**设计原则：两个版本都不允许隐式行为——隐式行为是长期维护的 bug 源。** 已消除的隐式行为清单（后续改动必须维持此原则）：
+
+| 隐式行为 | 处置 |
+|---|---|
+| 环境变量代理：Python `urllib.build_opener`/`urlopen` 与 Go `http.ProxyFromEnvironment` 都会静默读 `HTTPS_PROXY`，「直连」实际可能偷偷走代理 | Python `nodepool.fetch_url` 用 `ProxyHandler({})` 严格直连，`app._fx` 改走它；Go `proxypool.FetchURL` 用 `Transport{Proxy: nil}`。代理仅经显式订阅配置 |
+| Python `re.match` 隐式行首锚定 vs Go `MatchString` 全局搜索 | 两边统一 `re.search`/`MatchString` + 正则字面量内显式 `^` 与 `(?i)`，字面量逐字一致 |
+| 订阅体 base64 变体嗅探（std/urlsafe/无填充逐个猜） | 显式逐编码尝试并在日志中报告实际命中的编码 |
+| `len(body)>500` 判别 Kimi 空壳页的魔法数 | 命名常量 `minUsefulBody` + 注释 |
+| `models.json.bak` 备份失败被忽略然后照样覆盖 | 备份失败 = job 失败，不许无备份覆盖（对齐 Python `copy2` 未 guard 的语义） |
+| 请求体含未知 provider id：Python 抛 KeyError，Go 曾静默跳过 | 显式 log + report `{error:"未知源"}` |
+| POST body 非法 JSON 静默当 `{}` | 非空 body 解析失败 → 400 |
+| config.json/models.json 损坏时静默返回默认/空（下次 PUT 无声覆盖） | 解析失败 → 500 + 日志 |
+| `./public` 存在则用磁盘否则内嵌（换 cwd 即换 UI 来源） | 默认=embed；磁盘仅 `--public` 显式指定 |
+| `--data ./data` 相对 cwd（换目录启动凭空建新 data/） | 默认=可执行文件同目录 `data/`；flag 可覆盖 |
+| vless/hy2 URI userinfo 百分号编码未解码 | 显式 `QueryUnescape` |
+
+### 10.4 models.json 写回策略（Go 特有）
+
+Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会丢字段顺序（文件存在 6 种字段序变体）。方案：**raw 保留 + 脏子树 canonical 化**——`Dataset` 为每个 provider/meta 子树保存原始字节；写回时未改动的子树原字节直通（diff 为零），仅被 merge 的 provider 按固定字段序（id,name,currency,source,checkedAt,models…）重排输出。每个 provider 首次被 Go 触碰产生一次纯顺序的机械 diff，之后该子树永久稳定。同时修复数字序列化：`contextWindow` 等大数禁止科学计数法输出（曾出现 `1050000`→`1.05e+06`）。
+
+### 10.5 与 Python 版的行为差异（有意）
+
+- `PUT /api/config`：两版均「校验靠前端 validateConfig，服务端原子写透传」——行为一致，无服务端 schema 校验（本工具本地/VPS 自用前提）。
+- `/api/nodes`：节点来源不同（订阅 vs v2rayN），见 10.2。
+- 监听地址：Go `--host` 默认 127.0.0.1 与 Python 一致；nginx 同机反代无需放开。
+- Go 版二进制 ~49MB（内嵌 sing-box），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build` 直接产物。
+
+### 10.6 部署形态（Linux VPS + nginx）
+
+```
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server
+# 附带 data/（models.json 必须；config.json 可选）
+systemd: ExecStart=/opt/aipc/aipc-server --host 127.0.0.1 --port 8787
+nginx:   location / { proxy_pass http://127.0.0.1:8787; }
+```

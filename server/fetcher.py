@@ -79,7 +79,7 @@ def parse_xai(md: str) -> list[dict]:
     for c in _rows(md):
         if len(c) < 5:
             continue
-        m = re.match(r"(grok-[\w.\-]+)\s*\((<|≥)\s*([\d.]+)\s*k", c[0], re.I)
+        m = re.search(r"(?i)^(grok-[\w.\-]+)\s*\((<|≥)\s*([\d.]+)\s*k", c[0])  # 显式 ^ 锚定（勿用 re.match 隐式锚定）
         if not m:
             continue
         mid, direction, thr = m.group(1), m.group(2), _tokens(m.group(3) + "k")
@@ -169,7 +169,7 @@ def parse_openai(md: str) -> list[dict]:
         if len(c) < 4 or c[0] == "Model":
             continue
         name = re.sub(r"\s*\(<\d+K.*?\)\s*", "", c[0]).strip()
-        if not re.match(r"(gpt-|o\d|chatgpt|codex|computer|gpt-realtime|gpt-audio|gpt-image|whisper|tts|davinci|babbage|text-)", name):
+        if not re.search(r"^(gpt-|o\d|chatgpt|codex|computer|gpt-realtime|gpt-audio|gpt-image|whisper|tts|davinci|babbage|text-)", name):
             continue
         mid = name.lower()
         if len(c) >= 11:
@@ -309,7 +309,7 @@ def parse_bigmodel(md: str) -> list[dict]:
     其余档位差异在合并报告里提示，由用户人工确认。"""
     grouped: dict[str, dict] = {}
     for c in _rows(md):
-        if len(c) < 6 or not re.match(r"GLM-[\w.\-]+$", c[0], re.I):
+        if len(c) < 6 or not re.search(r"(?i)^GLM-[\w.\-]+$", c[0]):
             continue
         name, ctx = c[0], c[1]
         mid = name.lower() + "-cn"
@@ -378,9 +378,9 @@ def merge_provider(dataset: dict, provider_id: str, rows: list[dict]) -> dict:
             m["tiers"] = row["tiers"]
             if row.get("contextWindow"):
                 m["contextWindow"] = row["contextWindow"]
-            if row.get("status"):
+            if row.get("status"):                    # 显式：仅非空字符串才覆盖
                 m["status"] = row["status"]          # 官方标记 retired/limited 同步
-            if row.get("notes"):
+            if row.get("notes"):                     # 显式：仅非空字符串才覆盖
                 m["notes"] = row["notes"]
             m["fetchedAt"] = TODAY
             updated.append(mid)

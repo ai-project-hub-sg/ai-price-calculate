@@ -1,0 +1,250 @@
+// 节点池：进程内 sing-box 起本地 mixed 端口 → 探测目标可用性。
+// 与 Python nodepool.py 同流程，但核心从子进程换成内嵌库，零外部二进制。
+package proxypool
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"sort"
+	"sync"
+	"time"
+
+	box "github.com/sagernet/sing-box"
+	"github.com/sagernet/sing-box/include"
+	"github.com/sagernet/sing-box/option"
+	singjson "github.com/sagernet/sing/common/json"
+)
+
+const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+// baseCtx 全协议注册表上下文，进程内所有 box 实例共享。
+var baseCtx = include.Context(context.Background())
+
+type Result struct {
+	Status int
+	Bytes  int
+	Ms     int
+	Error  string
+	Body   []byte
+}
+
+// FetchURL 显式抓取：proxyPort=0 → 严格直连（刻意不读 HTTPS_PROXY 等环境变量，
+// 避免"直连"语义被隐式代理劫持）；proxyPort>0 → 本地 mixed 代理端口。
+// 需要固定代理时应作为显式配置项，而不是隐式环境依赖。
+func FetchURL(rawURL string, proxyPort int, timeoutMS int) Result {
+	var proxy func(*http.Request) (*url.URL, error)
+	if proxyPort > 0 {
+		proxy = http.ProxyURL(&url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", proxyPort)})
+	}
+	client := &http.Client{
+		Timeout:   time.Duration(timeoutMS) * time.Millisecond,
+		Transport: &http.Transport{Proxy: proxy},
+	}
+	req, _ := http.NewRequest("GET", rawURL, nil)
+	req.Header.Set("User-Agent", ua)
+	t0 := time.Now()
+	resp, err := client.Do(req)
+	ms := int(time.Since(t0).Milliseconds())
+	if err != nil {
+		return Result{Status: 0, Ms: ms, Error: err.Error()}
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Result{Status: resp.StatusCode, Ms: ms, Error: err.Error()}
+	}
+	r := Result{Status: resp.StatusCode, Bytes: len(body), Ms: ms, Body: body}
+	if resp.StatusCode != 200 {
+		r.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return r
+}
+
+// LocalBox 单个节点临时本地代理（进程内 sing-box 实例）。
+type LocalBox struct {
+	Port int
+	inst *box.Box
+}
+
+func StartNode(n Node) (*LocalBox, error) {
+	port, err := freePort()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := json.Marshal(map[string]any{
+		"log":      map[string]any{"level": "error"},
+		"inbounds": []any{map[string]any{"type": "mixed", "tag": "in", "listen": "127.0.0.1", "listen_port": port}},
+		"outbounds": []any{n.Outbound},
+	})
+	if err != nil {
+		return nil, err
+	}
+	var opt option.Options
+	if err := singjson.UnmarshalContext(baseCtx, cfg, &opt); err != nil {
+		return nil, fmt.Errorf("%s 配置解析失败: %w", n.Label(), err)
+	}
+	inst, err := box.New(box.Options{Options: opt, Context: baseCtx})
+	if err != nil {
+		return nil, fmt.Errorf("%s 实例创建失败: %w", n.Label(), err)
+	}
+	if err := inst.Start(); err != nil {
+		inst.Close()
+		return nil, fmt.Errorf("%s 启动失败: %w", n.Label(), err)
+	}
+	if !waitListen(port, 4*time.Second) {
+		inst.Close()
+		return nil, fmt.Errorf("%s 本地端口未就绪", n.Label())
+	}
+	return &LocalBox{Port: port, inst: inst}, nil
+}
+
+func (lb *LocalBox) Close() {
+	if lb.inst != nil {
+		lb.inst.Close()
+	}
+}
+
+// freePort 让位后端口理论上可被抢（TOCTOU 小窗）——可接受：
+// 若被抢，waitListen 等到的是别人的服务，探测抓取会失败并归因该节点，
+// 结果只是误报节点不可用，不会产生错误流量。
+func freePort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+func waitListen(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
+		if err == nil {
+			c.Close()
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+// ProbeReport 单节点探测结果（进 job log/report）。
+type ProbeReport struct {
+	Node    string            `json:"node"`
+	Kind    string            `json:"kind"`
+	Error   string            `json:"error,omitempty"`
+	Results map[string]Result `json:"results"`
+	node    Node              // 对应的 Node 对象（不进 JSON）
+}
+
+// ProbeNode 单节点探测一组 URL。
+func ProbeNode(n Node, urls map[string]string, timeoutMS int) ProbeReport {
+	out := ProbeReport{Node: n.Label(), Kind: n.Kind, node: n, Results: map[string]Result{}}
+	lb, err := StartNode(n)
+	if err != nil {
+		out.Error = err.Error()
+		return out
+	}
+	defer lb.Close()
+	for key, u := range urls {
+		r := FetchURL(u, lb.Port, timeoutMS)
+		r.Body = nil // 探测只关心可达性
+		out.Results[key] = r
+	}
+	return out
+}
+
+// FetchThrough 用指定节点起代理并抓取完整内容。
+func FetchThrough(n Node, rawURL string, timeoutMS int) Result {
+	lb, err := StartNode(n)
+	if err != nil {
+		return Result{Status: 0, Error: err.Error()}
+	}
+	defer lb.Close()
+	return FetchURL(rawURL, lb.Port, timeoutMS)
+}
+
+type Winner struct {
+	Node  Node
+	Label string
+}
+
+type ProbeResult struct {
+	Winners map[string]Winner
+	Reports []ProbeReport
+	Pending []string
+}
+
+// FindWorking 按候选顺序探测节点，为每个目标 URL 找首个可用节点（4 并发批）。
+func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int, timeoutMS int,
+	onProgress func(tested int, pending []string)) ProbeResult {
+	if maxNodes > 0 && len(nodes) > maxNodes {
+		nodes = nodes[:maxNodes]
+	}
+	if workers <= 0 {
+		workers = 4
+	}
+	pending := map[string]string{}
+	for k, v := range urls {
+		pending[k] = v
+	}
+	out := ProbeResult{Winners: map[string]Winner{}}
+	for i := 0; i < len(nodes) && len(pending) > 0; i += workers {
+		end := i + workers
+		if end > len(nodes) {
+			end = len(nodes)
+		}
+		batch := nodes[i:end]
+		targets := map[string]string{}
+		for k, v := range pending {
+			targets[k] = v
+		}
+		reps := make([]ProbeReport, len(batch))
+		var wg sync.WaitGroup
+		for j, n := range batch {
+			wg.Add(1)
+			go func(j int, n Node) {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						reps[j] = ProbeReport{Node: n.Label(), Kind: n.Kind, node: n,
+							Error: fmt.Sprintf("panic: %v", r), Results: map[string]Result{}}
+					}
+				}()
+				reps[j] = ProbeNode(n, targets, timeoutMS)
+			}(j, n)
+		}
+		wg.Wait()
+		for _, rep := range reps {
+			out.Reports = append(out.Reports, rep)
+			for key, r := range rep.Results {
+				if _, ok := pending[key]; ok && r.Status == 200 {
+					if _, won := out.Winners[key]; !won {
+						out.Winners[key] = Winner{Node: rep.node, Label: rep.Node}
+					}
+					delete(pending, key)
+				}
+			}
+		}
+		if onProgress != nil {
+			onProgress(len(out.Reports), sortedKeys(pending))
+		}
+	}
+	out.Pending = sortedKeys(pending)
+	return out
+}
+
+func sortedKeys(m map[string]string) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
