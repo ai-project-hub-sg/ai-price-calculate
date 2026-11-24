@@ -72,7 +72,14 @@ window.DEMO_CONFIG = {
               modelOverrides: [
                 { id: "ov-3", modelId: "kimi-k3", discount: 0.8, tieredPricing: { enabled: true },
                   mix: { input: 0.6, cacheRead: 0.1, cacheWrite: 0.1, output: 0.2 } },
-                { id: "ov-4", modelId: "deepseek-v4-pro", discount: 0.6, tieredPricing: { enabled: true } }
+                { id: "ov-4", modelId: "deepseek-v4-pro", discount: 0.6, tieredPricing: { enabled: true } },
+                { id: "ov-5", modelId: "gpt-6.2-astra", discount: 1, tieredPricing: { enabled: true },
+                  basePrice: { currency: "USD", tiers: [
+                    { upToTokens: 272000, input: 12, cacheRead: 0.8, output: 52,
+                      cacheWrites: [{ ttl: "30m", price: 20 }, { ttl: "12h", price: 40 }] },
+                    { upToTokens: null, input: 24, cacheRead: 1.6, output: 78,
+                      cacheWrites: [{ ttl: "30m", price: 40 }, { ttl: "12h", price: 80 }] }
+                  ] } }
               ]
             }
           ]
