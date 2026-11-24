@@ -14,6 +14,7 @@ import socket
 import sqlite3
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -104,9 +105,21 @@ def _load_candidates(db_path: str = DB_PATH) -> list[Node]:
 
 def _xray_vless_config(node: Node, port: int) -> dict:
     r = node.row
-    user = {"id": r.get("Id") or "", "encryption": r.get("Security") or "none"}
-    if r.get("Flow"):
-        user["flow"] = r["Flow"]
+    # v2rayN 7.x schema：UUID 存 Password（Id 列为空）、flow/encryption 挪进
+    # ProtoExtra JSON、transport 细节挪进 TransportExtra JSON——全部新旧兼容读取。
+    try:
+        proto = json.loads(r.get("ProtoExtra") or "{}")
+    except json.JSONDecodeError:
+        proto = {}
+    try:
+        tex = json.loads(r.get("TransportExtra") or "{}")
+    except json.JSONDecodeError:
+        tex = {}
+    user = {"id": r.get("Id") or r.get("Password") or "",
+            "encryption": r.get("Security") or proto.get("VlessEncryption") or "none"}
+    flow = r.get("Flow") or proto.get("Flow")
+    if flow:
+        user["flow"] = flow
     stream = {
         "network": r.get("Network") or "tcp",
         "security": "reality",
@@ -119,16 +132,20 @@ def _xray_vless_config(node: Node, port: int) -> dict:
         },
     }
     net = stream["network"]
+    hdr = r.get("HeaderType") or tex.get("RawHeaderType") or "none"
+    path = r.get("Path") or tex.get("Path") or ""
+    host = r.get("RequestHost") or tex.get("Host") or ""
     if net == "tcp":
-        stream["tcpSettings"] = {"header": {"type": r.get("HeaderType") or "none"}}
+        stream["tcpSettings"] = {"header": {"type": hdr}}
+    elif net == "raw":  # xray ≥1.8 把 tcp 改名为 raw，配置键同步改名
+        stream["rawSettings"] = {"header": {"type": hdr}}
     elif net == "ws":
-        stream["wsSettings"] = {"path": r.get("Path") or "/",
-                                "headers": {"Host": r.get("RequestHost") or ""}}
+        stream["wsSettings"] = {"path": path or "/",
+                                "headers": {"Host": host}}
     elif net == "grpc":
-        stream["grpcSettings"] = {"serviceName": r.get("Path") or ""}
+        stream["grpcSettings"] = {"serviceName": path}
     elif net == "xhttp":
-        stream["xhttpSettings"] = {"path": r.get("Path") or "/",
-                                   "host": r.get("RequestHost") or ""}
+        stream["xhttpSettings"] = {"path": path or "/", "host": host}
     return {
         "log": {"loglevel": "warning"},
         "inbounds": [{"listen": "127.0.0.1", "port": port,
@@ -195,7 +212,29 @@ def fetch_url(url: str, proxy_port: int | None, timeout: float = 10.0) -> dict:
     """经指定本地代理端口抓取，返回 {status, bytes, ms, error}。
 
     proxy_port=None → 严格直连：显式空 ProxyHandler 关闭 urllib 对
-    HTTP(S)_PROXY 环境变量的隐式读取（显式原则，勿移除）。"""
+    HTTP(S)_PROXY 环境变量的隐式读取（显式原则，勿移除）。
+
+    硬上限 = timeout*1.5+2：urllib 的 timeout 是 per-op，DNS/多 IP 顺序重试
+    会累计超标（google 直连曾卡 70s）。超限时 daemon 线程被放弃（进程级
+    无法强杀线程，泄漏到自然结束，代价可接受）。"""
+    cap = timeout * 1.5 + 2
+    box: dict = {}
+
+    def _go():
+        box.update(_fetch_inner(url, proxy_port, timeout))
+
+    t0 = time.time()
+    th = threading.Thread(target=_go, daemon=True)
+    th.start()
+    th.join(cap)
+    if th.is_alive():
+        return {"status": 0, "bytes": 0,
+                "ms": round((time.time() - t0) * 1000),
+                "error": f"timeout(hard {cap:.0f}s)"}
+    return box
+
+
+def _fetch_inner(url: str, proxy_port: int | None, timeout: float) -> dict:
     handlers = [urllib.request.ProxyHandler(
         {"http": f"http://127.0.0.1:{proxy_port}",
          "https": f"http://127.0.0.1:{proxy_port}"})] if proxy_port \
@@ -230,15 +269,27 @@ class _LocalProxy:
             exe, cfg = XRAY_EXE, _xray_vless_config(self.node, self.port)
         else:
             exe, cfg = SINGBOX_EXE, _singbox_hy2_config(self.node, self.port)
+        if not os.path.isfile(exe):
+            raise RuntimeError(
+                f"找不到 {os.path.basename(exe)}（{exe}）——检查 v2rayN 目录")
         fd, self._tmp = tempfile.mkstemp(suffix=".json", prefix="aicfg_")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(cfg, f)
         self.proc = subprocess.Popen(
             [exe, "run", "-c", self._tmp],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             creationflags=_NO_WINDOW)
         if not _wait_listen(self.port, self.proc):
-            raise RuntimeError(f"{self.node.label} 本地端口未就绪")
+            tail = ""
+            try:
+                self.proc.kill()
+                _, tail = self.proc.communicate(timeout=2)
+                lines = (tail or "").strip().splitlines()
+                tail = lines[-1][:160] if lines else ""
+            except Exception:
+                pass
+            raise RuntimeError(f"{self.node.label} 本地端口未就绪"
+                               + (f"：{tail}" if tail else ""))
         return self
 
     def __exit__(self, *_):

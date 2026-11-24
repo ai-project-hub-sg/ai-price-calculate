@@ -43,6 +43,8 @@
 | 换行翻转 | Python `open("w")` 按 OS 写 CRLF/LF | `Dataset.eol` 检测并保留输入换行风格 |
 | fixture 过期 | .md 样本是某时刻快照 | 源页改版→更新 fixture + 重跑 gen_fixtures.py；真实源结构变了≠测试错 |
 | 200 墙页当成功 | 地区限制/反爬页也是 200+大字节（实测 anthropic 311KB blocked 页） | 直连与节点胜出都做「解析非空」校验；节点胜出复用探测 body（重抓有 CDN 抖动窗口） |
+| v2rayN DB schema 漂移 | v7 把 VLESS UUID 移到 `Password` 列（`Id` 为 NULL）、flow/encryption 挪进 `ProtoExtra`、transport 细节挪进 `TransportExtra` | `_xray_vless_config` 全部新旧兼容读取（`Id`→`Password`、`Flow`→`ProtoExtra.Flow`、`HeaderType`→`TransportExtra.RawHeaderType`）；xray 启动失败要能看到 stderr（勿 DEVNULL 吞掉） |
+| urllib per-op 超时累计 | `timeout` 只管单次 socket 操作，DNS/多 IP 顺序重试累计可达 70s | `fetch_url` 用 daemon 线程包硬上限 `timeout*1.5+2` |
 
 ## 4. 测试基准的再生工作流
 
