@@ -171,6 +171,16 @@ function blendedPrice(u, mix) {
   return (u.input * m.input + u.cacheRead * m.cacheRead + u.cacheWrite5m * m.cacheWrite + u.output * m.output) * u.discount;
 }
 
+/** 配比逐级解析：模型覆盖 > 提供商 > 站 > 档案场景（首个有效非空配比） */
+function resolveMix(profile, station, provider, mOv) {
+  const cand = [mOv && mOv.mix, provider && provider.mix, station && station.mix,
+                profile.scenario && profile.scenario.mix];
+  for (const m of cand) {
+    if (m && ((+m.input || 0) + (+m.cacheRead || 0) + (+m.cacheWrite || 0) + (+m.output || 0)) > 0) return m;
+  }
+  return { input: 1, cacheRead: 0, cacheWrite: 0, output: 0 };
+}
+
 // ---------- 结果行生成 ----------
 
 /**
@@ -184,7 +194,6 @@ function summaryRows(profiles, dataset, rate) {
   const rows = [];
   for (const pf of profiles || []) {
     const sc = pf.scenario || {};
-    const mix = sc.mix || { input: 1, cacheRead: 0, output: 0 };
     for (const st of pf.stations || []) {
       if (st.enabled === false) continue;
       for (const pr of st.providers || []) {
@@ -195,10 +204,12 @@ function summaryRows(profiles, dataset, rate) {
             promptTokens: +sc.promptTokens || 0, offPeak: !!sc.offPeak,
           });
           if (!u.inScope) continue;
+          const mOv = (pr.modelOverrides || []).find(o => o.modelId === entry.model.id);
+          const rowMix = resolveMix(pf, st, pr, mOv);
           const cur = entry.vendor.currency || "USD";
-          const native = blendedPrice(u, mix);
-          // 官方基准价（无折扣、官方 tier、同档位逻辑）
-          const off = officialPrice(entry, pf, rate);
+          const native = blendedPrice(u, rowMix);
+          // 官方基准价（无折扣、官方 tier、同档位、同配比）
+          const off = officialPrice(entry, pf, rate, rowMix);
           rows.push({
             profileId: pf.id, profileName: pf.name,
             stationId: st.id, stationName: st.name,
@@ -225,9 +236,9 @@ function summaryRows(profiles, dataset, rate) {
   return rows;
 }
 
-function officialPrice(entry, profile, rate) {
+function officialPrice(entry, profile, rate, mix) {
   const sc = profile.scenario || {};
-  const m = normalizeMix(sc.mix || { input: 1, cacheRead: 0, output: 0 });
+  const m = normalizeMix(mix || sc.mix || { input: 1, cacheRead: 0, output: 0 });
   const t = pickTier(entry.model.tiers, +sc.promptTokens || 0);
   const cr = t.cacheRead != null ? t.cacheRead : t.input;
   const cw = cacheWritePrice(t, "5m", t.input);
@@ -528,7 +539,7 @@ function validateTiers(tiers, modelId, errors) {
 const Calc = {
   CNY, pickTier, pickTierIndex, normalizeMix, convert,
   classifySeries, modelIndex, allModels, inScope,
-  resolveUnitPrices, blendedPrice, summaryRows, officialPrice,
+  resolveUnitPrices, resolveMix, blendedPrice, summaryRows, officialPrice,
   estimateRequest, newProvider, newStation, newProfile, defaultConfig,
   cloneNode, renameStation, validateConfig, validateTiers, tierLabelOf, fmtK,
   tiersFromEditor, isPeakTime, parseCsv, parseBillCsv, reconcile, cacheWritePrice,

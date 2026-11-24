@@ -52,6 +52,7 @@ window.DEMO_CONFIG = {
             {
               id: "pr-a3", name: "GLM专线", isDefault: false, enabled: true,
               defaultDiscount: 0.75, tieredPricing: { enabled: true },
+              mix: { input: 0.25, cacheRead: 0.6, cacheWrite: 0.05, output: 0.1 },
               scope: { vendorIds: ["zai", "bigmodel-cn"], series: [], modelIds: [] },
               vendorSwitches: [], modelOverrides: []
             }
@@ -67,7 +68,8 @@ window.DEMO_CONFIG = {
               scope: { vendorIds: [], series: [], modelIds: [] },
               vendorSwitches: [],
               modelOverrides: [
-                { id: "ov-3", modelId: "kimi-k3", discount: 0.8, tieredPricing: { enabled: true } },
+                { id: "ov-3", modelId: "kimi-k3", discount: 0.8, tieredPricing: { enabled: true },
+                  mix: { input: 0.6, cacheRead: 0.1, cacheWrite: 0.1, output: 0.2 } },
                 { id: "ov-4", modelId: "deepseek-v4-pro", discount: 0.6, tieredPricing: { enabled: true } }
               ]
             }

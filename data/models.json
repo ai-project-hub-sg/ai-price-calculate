@@ -1,3114 +1,3114 @@
 {
- "meta": {
-  "version": "2026-11-24",
-  "description": "AI 厂商官方 API 价目数据集。所有价格单位均为「每 1M tokens」，币种见各厂商 currency 字段。仅收录官方价目页当前列出的模型；已下线/不存在的不收录。",
-  "tierBasis": "tiers 按 promptTokens（未命中输入 + 缓存命中输入）升序排列；命中第一个 upToTokens === null 或 promptTokens <= upToTokens 的档位。整档价格作用于全部 tokens（非分段累进）。",
-  "fields": {
-   "upToTokens": "该档适用的 prompt tokens 上限（含）；null 表示无上限（必须为最后一档）",
-   "input": "未命中缓存的输入价",
-   "output": "输出价（含思考/推理 tokens，除非另注）",
-   "cacheRead": "缓存命中输入价；null/缺省表示无单独缓存价（缓存读按 input 计）",
-   "cacheWrites": "缓存写入价数组 [{ttl, price}]，仅信息展示用，v1 归一化不纳入",
-   "offPeakRatio": "非高峰时段价格 = 标准价 × 该系数（可选）",
-   "fetchedAt": "本数据集最近一次从官方源取得/核对价格的日期",
-   "officialUpdatedAt": "官方最近价格生效/更新日期（与 fetchedAt 是两个概念）；未知为 null"
+  "meta": {
+    "version": "2026-11-24",
+    "description": "AI 厂商官方 API 价目数据集。所有价格单位均为「每 1M tokens」，币种见各厂商 currency 字段。仅收录官方价目页当前列出的模型；已下线/不存在的不收录。",
+    "tierBasis": "tiers 按 promptTokens（未命中输入 + 缓存命中输入）升序排列；命中第一个 upToTokens === null 或 promptTokens <= upToTokens 的档位。整档价格作用于全部 tokens（非分段累进）。",
+    "fields": {
+      "upToTokens": "该档适用的 prompt tokens 上限（含）；null 表示无上限（必须为最后一档）",
+      "input": "未命中缓存的输入价",
+      "output": "输出价（含思考/推理 tokens，除非另注）",
+      "cacheRead": "缓存命中输入价；null/缺省表示无单独缓存价（缓存读按 input 计）",
+      "cacheWrites": "缓存写入价数组 [{ttl, price}]，仅信息展示用，v1 归一化不纳入",
+      "offPeakRatio": "非高峰时段价格 = 标准价 × 该系数（可选）",
+      "fetchedAt": "本数据集最近一次从官方源取得/核对价格的日期",
+      "officialUpdatedAt": "官方最近价格生效/更新日期（与 fetchedAt 是两个概念）；未知为 null"
+    },
+    "disclaimer": "数据来自各厂商公开价目页（见每 provider.source 与 checkedAt），价格可能随时变动；应用内所有价格均可由用户覆盖。更新由 scripts/server 端官方源适配器执行，不覆盖用户自定义配置。"
   },
-  "disclaimer": "数据来自各厂商公开价目页（见每 provider.source 与 checkedAt），价格可能随时变动；应用内所有价格均可由用户覆盖。更新由 scripts/server 端官方源适配器执行，不覆盖用户自定义配置。"
- },
- "providers": [
-  {
-   "id": "openai",
-   "name": "OpenAI",
-   "currency": "USD",
-   "source": "https://developers.openai.com/api/docs/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": false,
-   "autoFetchReason": "官方页对程序化请求返回 403/连接重置，需人工核对",
-   "notes": "6.x 系列输入 tokens 超过阈值（GPT-6.2 Astra 为 272K）时全请求按长上下文档计费。Batch=5 折，Fast=2×，Ultrafast=3×（2027-03-01 起 6×）。",
-   "models": [
+  "providers": [
     {
-     "id": "gpt-6.2-astra",
-     "name": "GPT-6.2 Astra",
-     "contextWindow": 1050000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 8,
-       "output": 40,
-       "cacheRead": 0.4,
-       "cacheWrites": [
+      "id": "openai",
+      "name": "OpenAI",
+      "currency": "USD",
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": false,
+      "autoFetchReason": "官方页对程序化请求返回 403/连接重置，需人工核对",
+      "notes": "6.x 系列输入 tokens 超过阈值（GPT-6.2 Astra 为 272K）时全请求按长上下文档计费。Batch=5 折，Fast=2×，Ultrafast=3×（2027-03-01 起 6×）。",
+      "models": [
         {
-         "ttl": "30m",
-         "price": 10
+          "id": "gpt-6.2-astra",
+          "name": "GPT-6.2 Astra",
+          "contextWindow": 1050000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 8.0,
+              "output": 40.0,
+              "cacheRead": 0.4,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 10.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 20.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 16.0,
+              "output": 60.0,
+              "cacheRead": 0.8,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 20.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 40.0
+                }
+              ]
+            }
+          ],
+          "notes": "长档阈值=输入>272K"
         },
         {
-         "ttl": "12h",
-         "price": 20
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 16,
-       "output": 60,
-       "cacheRead": 0.8,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 20
+          "id": "gpt-6.2-sol",
+          "name": "GPT-6.2 Sol",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 2.0,
+              "output": 10.0,
+              "cacheRead": 0.1,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 5.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 15.0,
+              "cacheRead": 0.2,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 10.0
+                }
+              ]
+            }
+          ],
+          "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
         },
         {
-         "ttl": "12h",
-         "price": 40
-        }
-       ]
-      }
-     ],
-     "notes": "长档阈值=输入>272K"
-    },
-    {
-     "id": "gpt-6.2-sol",
-     "name": "GPT-6.2 Sol",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 2,
-       "output": 10,
-       "cacheRead": 0.1,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 2.5
+          "id": "gpt-6.1-sol",
+          "name": "GPT-6.1 Sol",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 2.0,
+              "output": 10.0,
+              "cacheRead": 0.1,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 5.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 15.0,
+              "cacheRead": 0.2,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 10.0
+                }
+              ]
+            }
+          ],
+          "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
         },
         {
-         "ttl": "12h",
-         "price": 5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 15,
-       "cacheRead": 0.2,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 5
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 10.0,
+              "output": 50.0,
+              "cacheRead": 1.0,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 12.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 25.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 20.0,
+              "output": 75.0,
+              "cacheRead": 2.0,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 25.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 50.0
+                }
+              ]
+            }
+          ],
+          "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
         },
         {
-         "ttl": "12h",
-         "price": 10
-        }
-       ]
-      }
-     ],
-     "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
-    },
-    {
-     "id": "gpt-6.1-sol",
-     "name": "GPT-6.1 Sol",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 2,
-       "output": 10,
-       "cacheRead": 0.1,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 2.5
+          "id": "gpt-5.4-mini",
+          "name": "GPT-5.4 Mini",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.75,
+              "output": 4.5,
+              "cacheRead": 0.075
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 15,
-       "cacheRead": 0.2,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 5
+          "id": "gpt-5.4-nano",
+          "name": "GPT-5.4 Nano",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.2,
+              "output": 1.25,
+              "cacheRead": 0.02
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 10
-        }
-       ]
-      }
-     ],
-     "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
-    },
-    {
-     "id": "gpt-6-astra",
-     "name": "GPT-6 Astra",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 10,
-       "output": 50,
-       "cacheRead": 1,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 12.5
+          "id": "gpt-5.2",
+          "name": "GPT-5.2",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.75,
+              "output": 14.0,
+              "cacheRead": 0.175
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 25
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 20,
-       "output": 75,
-       "cacheRead": 2,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 25
+          "id": "gpt-5.2-pro",
+          "name": "GPT-5.2 Pro",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 21.0,
+              "output": 168.0
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 50
-        }
-       ]
-      }
-     ],
-     "notes": "长档阈值按 6.x 系列规则推定为 272K，以官方页为准"
-    },
-    {
-     "id": "gpt-5.4-mini",
-     "name": "GPT-5.4 Mini",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.75,
-       "output": 4.5,
-       "cacheRead": 0.075
-      }
-     ]
-    },
-    {
-     "id": "gpt-5.4-nano",
-     "name": "GPT-5.4 Nano",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.2,
-       "output": 1.25,
-       "cacheRead": 0.02
-      }
-     ]
-    },
-    {
-     "id": "gpt-5.2",
-     "name": "GPT-5.2",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.75,
-       "output": 14,
-       "cacheRead": 0.175
-      }
-     ]
-    },
-    {
-     "id": "gpt-5.2-pro",
-     "name": "GPT-5.2 Pro",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 21,
-       "output": 168
-      }
-     ]
-    },
-    {
-     "id": "gpt-5.1",
-     "name": "GPT-5.1",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.25,
-       "output": 10,
-       "cacheRead": 0.125
-      }
-     ]
-    },
-    {
-     "id": "gpt-5",
-     "name": "GPT-5",
-     "contextWindow": 400000,
-     "status": "deprecated",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.25,
-       "output": 10,
-       "cacheRead": 0.125
-      }
-     ],
-     "notes": "官方标记 deprecated（仍在价目页计费中），推荐迁移至 6.x"
-    },
-    {
-     "id": "gpt-5-mini",
-     "name": "GPT-5 Mini",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.25,
-       "output": 2,
-       "cacheRead": 0.025
-      }
-     ]
-    },
-    {
-     "id": "gpt-5-nano",
-     "name": "GPT-5 Nano",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.05,
-       "output": 0.4,
-       "cacheRead": 0.005
-      }
-     ]
-    },
-    {
-     "id": "gpt-5-pro",
-     "name": "GPT-5 Pro",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 15,
-       "output": 120
-      }
-     ]
-    },
-    {
-     "id": "gpt-4.1",
-     "name": "GPT-4.1",
-     "contextWindow": 1047576,
-     "status": "deprecated",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 8,
-       "cacheRead": 0.5
-      }
-     ]
-    },
-    {
-     "id": "gpt-4.1-mini",
-     "name": "GPT-4.1 Mini",
-     "contextWindow": 1047576,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.4,
-       "output": 1.6,
-       "cacheRead": 0.1
-      }
-     ]
-    },
-    {
-     "id": "gpt-4o",
-     "name": "GPT-4o",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 10,
-       "cacheRead": 1.25
-      }
-     ]
-    },
-    {
-     "id": "gpt-4o-mini",
-     "name": "GPT-4o Mini",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.15,
-       "output": 0.6,
-       "cacheRead": 0.075
-      }
-     ]
-    },
-    {
-     "id": "o3",
-     "name": "o3",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 8,
-       "cacheRead": 0.5
-      }
-     ]
-    },
-    {
-     "id": "o3-pro",
-     "name": "o3 Pro",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 20,
-       "output": 80
-      }
-     ]
-    },
-    {
-     "id": "gpt-6.1-terra",
-     "name": "gpt-6.1-terra",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 1,
-       "output": 5,
-       "cacheRead": 0.05,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 1.25
+          "id": "gpt-5.1",
+          "name": "GPT-5.1",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.25,
+              "output": 10.0,
+              "cacheRead": 0.125
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 2.5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 7.5,
-       "cacheRead": 0.1,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 2.5
+          "id": "gpt-5",
+          "name": "GPT-5",
+          "contextWindow": 400000,
+          "status": "deprecated",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.25,
+              "output": 10.0,
+              "cacheRead": 0.125
+            }
+          ],
+          "notes": "官方标记 deprecated（仍在价目页计费中），推荐迁移至 6.x"
         },
         {
-         "ttl": "12h",
-         "price": 5
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-6-luna",
-     "name": "gpt-6-luna",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 0.1,
-       "output": 0.5,
-       "cacheRead": 0.01,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 0.125
+          "id": "gpt-5-mini",
+          "name": "GPT-5 Mini",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.25,
+              "output": 2.0,
+              "cacheRead": 0.025
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 0.25
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 0.2,
-       "output": 0.75,
-       "cacheRead": 0.02,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 0.25
+          "id": "gpt-5-nano",
+          "name": "GPT-5 Nano",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.05,
+              "output": 0.4,
+              "cacheRead": 0.005
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 0.5
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-6-sol",
-     "name": "gpt-6-sol",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 2,
-       "output": 10,
-       "cacheRead": 0.2,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 2.5
+          "id": "gpt-5-pro",
+          "name": "GPT-5 Pro",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 15.0,
+              "output": 120.0
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 15,
-       "cacheRead": 0.4,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 5
+          "id": "gpt-4.1",
+          "name": "GPT-4.1",
+          "contextWindow": 1047576,
+          "status": "deprecated",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 8.0,
+              "cacheRead": 0.5
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 10
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.6-sol",
-     "name": "gpt-5.6-sol",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 4,
-       "output": 20,
-       "cacheRead": 0.4,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 5
+          "id": "gpt-4.1-mini",
+          "name": "GPT-4.1 Mini",
+          "contextWindow": 1047576,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.4,
+              "output": 1.6,
+              "cacheRead": 0.1
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 10
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 8,
-       "output": 30,
-       "cacheRead": 0.8,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 10
+          "id": "gpt-4o",
+          "name": "GPT-4o",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 10.0,
+              "cacheRead": 1.25
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 20
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.6-terra",
-     "name": "gpt-5.6-terra",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 2,
-       "output": 12,
-       "cacheRead": 0.2,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 2.5
+          "id": "gpt-4o-mini",
+          "name": "GPT-4o Mini",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.15,
+              "output": 0.6,
+              "cacheRead": 0.075
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 18,
-       "cacheRead": 0.4,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 5
+          "id": "o3",
+          "name": "o3",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 8.0,
+              "cacheRead": 0.5
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 10
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.6-luna",
-     "name": "gpt-5.6-luna",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 0.2,
-       "output": 1.2,
-       "cacheRead": 0.02,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 0.25
+          "id": "o3-pro",
+          "name": "o3 Pro",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 20.0,
+              "output": 80.0
+            }
+          ]
         },
         {
-         "ttl": "12h",
-         "price": 0.5
-        }
-       ]
-      },
-      {
-       "upToTokens": null,
-       "input": 0.4,
-       "output": 1.8,
-       "cacheRead": 0.04,
-       "cacheWrites": [
-        {
-         "ttl": "30m",
-         "price": 0.5
+          "id": "gpt-6.1-terra",
+          "name": "gpt-6.1-terra",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 1.0,
+              "output": 5.0,
+              "cacheRead": 0.05,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 1.25
+                },
+                {
+                  "ttl": "12h",
+                  "price": 2.5
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 7.5,
+              "cacheRead": 0.1,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 5.0
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "12h",
-         "price": 1
-        }
-       ]
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.5",
-     "name": "gpt-5.5",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 5,
-       "output": 30,
-       "cacheRead": 0.5
-      },
-      {
-       "upToTokens": null,
-       "input": 10,
-       "output": 45,
-       "cacheRead": 1
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.5-pro",
-     "name": "gpt-5.5-pro",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 30,
-       "output": 180
-      },
-      {
-       "upToTokens": null,
-       "input": 60,
-       "output": 270
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.4",
-     "name": "gpt-5.4",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 2.5,
-       "output": 15,
-       "cacheRead": 0.25
-      },
-      {
-       "upToTokens": null,
-       "input": 5,
-       "output": 22.5,
-       "cacheRead": 0.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gpt-5.4-pro",
-     "name": "gpt-5.4-pro",
-     "tiers": [
-      {
-       "upToTokens": 272000,
-       "input": 30,
-       "output": 180
-      },
-      {
-       "upToTokens": null,
-       "input": 60,
-       "output": 270
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    }
-   ]
-  },
-  {
-   "id": "anthropic",
-   "name": "Anthropic",
-   "currency": "USD",
-   "source": "https://platform.claude.com/docs/en/about-claude/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": "2026-11-09",
-   "autoFetch": false,
-   "autoFetchReason": "官方页区域限制（重定向至 App unavailable），需可用节点或人工核对",
-   "notes": "officialUpdatedAt 取自官方 rate card（Prices Effective: 2026-11-09）。Claude 4.7 及之后模型（含 Mythos Preview）采用新 tokenizer，同文本 token 数约多 30%。缓存命中价：Fable/Mythos 5.x=输入价 0.025x，Opus 5.5/Sonnet 5.5=0.05x，其余=0.1x。美国区域端点 +10%。Batch=5 折。",
-   "models": [
-    {
-     "id": "claude-fable-5-2",
-     "name": "Claude Fable 5.2",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 8,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 10
+          "id": "gpt-6-luna",
+          "name": "gpt-6-luna",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 0.1,
+              "output": 0.5,
+              "cacheRead": 0.01,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 0.125
+                },
+                {
+                  "ttl": "12h",
+                  "price": 0.25
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 0.2,
+              "output": 0.75,
+              "cacheRead": 0.02,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 0.25
+                },
+                {
+                  "ttl": "12h",
+                  "price": 0.5
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 16
-        }
-       ],
-       "cacheRead": 0.2,
-       "output": 40
-      }
-     ]
-    },
-    {
-     "id": "claude-mythos-5-2",
-     "name": "Claude Mythos 5.2",
-     "contextWindow": null,
-     "status": "limited",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 8,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 10
+          "id": "gpt-6-sol",
+          "name": "gpt-6-sol",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 2.0,
+              "output": 10.0,
+              "cacheRead": 0.2,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 5.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 15.0,
+              "cacheRead": 0.4,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 10.0
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 16
-        }
-       ],
-       "cacheRead": 0.2,
-       "output": 40
-      }
-     ],
-     "notes": "限量：需组织验证"
-    },
-    {
-     "id": "claude-fable-5-1",
-     "name": "Claude Fable 5.1",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 10,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 12.5
+          "id": "gpt-5.6-sol",
+          "name": "gpt-5.6-sol",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 4.0,
+              "output": 20.0,
+              "cacheRead": 0.4,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 10.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "output": 30.0,
+              "cacheRead": 0.8,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 10.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 20.0
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 20
-        }
-       ],
-       "cacheRead": 0.25,
-       "output": 50
-      }
-     ]
-    },
-    {
-     "id": "claude-mythos-5-1",
-     "name": "Claude Mythos 5.1",
-     "contextWindow": null,
-     "status": "limited",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 10,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 12.5
+          "id": "gpt-5.6-terra",
+          "name": "gpt-5.6-terra",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 2.0,
+              "output": 12.0,
+              "cacheRead": 0.2,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 5.0
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 18.0,
+              "cacheRead": 0.4,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "12h",
+                  "price": 10.0
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 20
-        }
-       ],
-       "cacheRead": 0.25,
-       "output": 50
-      }
-     ]
-    },
-    {
-     "id": "claude-fable-5",
-     "name": "Claude Fable 5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 10,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 12.5
+          "id": "gpt-5.6-luna",
+          "name": "gpt-5.6-luna",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 0.2,
+              "output": 1.2,
+              "cacheRead": 0.02,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 0.25
+                },
+                {
+                  "ttl": "12h",
+                  "price": 0.5
+                }
+              ]
+            },
+            {
+              "upToTokens": null,
+              "input": 0.4,
+              "output": 1.8,
+              "cacheRead": 0.04,
+              "cacheWrites": [
+                {
+                  "ttl": "30m",
+                  "price": 0.5
+                },
+                {
+                  "ttl": "12h",
+                  "price": 1.0
+                }
+              ]
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 20
-        }
-       ],
-       "cacheRead": 1,
-       "output": 50
-      }
-     ]
-    },
-    {
-     "id": "claude-mythos-5",
-     "name": "Claude Mythos 5",
-     "contextWindow": null,
-     "status": "limited",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 10,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 12.5
+          "id": "gpt-5.5",
+          "name": "gpt-5.5",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 5.0,
+              "output": 30.0,
+              "cacheRead": 0.5
+            },
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "output": 45.0,
+              "cacheRead": 1.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 20
-        }
-       ],
-       "cacheRead": 1,
-       "output": 50
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-5-5",
-     "name": "Claude Opus 5.5",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 4,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 5
+          "id": "gpt-5.5-pro",
+          "name": "gpt-5.5-pro",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 30.0,
+              "output": 180.0
+            },
+            {
+              "upToTokens": null,
+              "input": 60.0,
+              "output": 270.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 8
-        }
-       ],
-       "cacheRead": 0.2,
-       "output": 20
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-5",
-     "name": "Claude Opus 5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 6.25
+          "id": "gpt-5.4",
+          "name": "gpt-5.4",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 2.5,
+              "output": 15.0,
+              "cacheRead": 0.25
+            },
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "output": 22.5,
+              "cacheRead": 0.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         },
         {
-         "ttl": "1h",
-         "price": 10
+          "id": "gpt-5.4-pro",
+          "name": "gpt-5.4-pro",
+          "tiers": [
+            {
+              "upToTokens": 272000,
+              "input": 30.0,
+              "output": 180.0
+            },
+            {
+              "upToTokens": null,
+              "input": 60.0,
+              "output": 270.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
         }
-       ],
-       "cacheRead": 0.5,
-       "output": 25
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-4-8",
-     "name": "Claude Opus 4.8",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 6.25
-        },
-        {
-         "ttl": "1h",
-         "price": 10
-        }
-       ],
-       "cacheRead": 0.5,
-       "output": 25
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-4-7",
-     "name": "Claude Opus 4.7",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 6.25
-        },
-        {
-         "ttl": "1h",
-         "price": 10
-        }
-       ],
-       "cacheRead": 0.5,
-       "output": 25
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-4-6",
-     "name": "Claude Opus 4.6",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 6.25
-        },
-        {
-         "ttl": "1h",
-         "price": 10
-        }
-       ],
-       "cacheRead": 0.5,
-       "output": 25
-      }
-     ]
-    },
-    {
-     "id": "claude-opus-4-5",
-     "name": "Claude Opus 4.5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 6.25
-        },
-        {
-         "ttl": "1h",
-         "price": 10
-        }
-       ],
-       "cacheRead": 0.5,
-       "output": 25
-      }
-     ]
-    },
-    {
-     "id": "claude-sonnet-5-5",
-     "name": "Claude Sonnet 5.5",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 2.5
-        },
-        {
-         "ttl": "1h",
-         "price": 4
-        }
-       ],
-       "cacheRead": 0.1,
-       "output": 10
-      }
-     ]
-    },
-    {
-     "id": "claude-sonnet-5",
-     "name": "Claude Sonnet 5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 2.5
-        },
-        {
-         "ttl": "1h",
-         "price": 4
-        }
-       ],
-       "cacheRead": 0.2,
-       "output": 10
-      }
-     ]
-    },
-    {
-     "id": "claude-sonnet-4-6",
-     "name": "Claude Sonnet 4.6",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 3,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 3.75
-        },
-        {
-         "ttl": "1h",
-         "price": 6
-        }
-       ],
-       "cacheRead": 0.3,
-       "output": 15
-      }
-     ]
-    },
-    {
-     "id": "claude-sonnet-4-5",
-     "name": "Claude Sonnet 4.5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 3,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 3.75
-        },
-        {
-         "ttl": "1h",
-         "price": 6
-        }
-       ],
-       "cacheRead": 0.3,
-       "output": 15
-      }
-     ]
-    },
-    {
-     "id": "claude-haiku-5-5",
-     "name": "Claude Haiku 5.5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": 100000,
-       "input": 0.1,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 0.125
-        },
-        {
-         "ttl": "1h",
-         "price": 0.2
-        }
-       ],
-       "cacheRead": 0.01,
-       "output": 0.5
-      },
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 0.625
-        },
-        {
-         "ttl": "1h",
-         "price": 1
-        }
-       ],
-       "cacheRead": 0.05,
-       "output": 2.5
-      }
-     ],
-     "notes": "prompt（含缓存读写）>100K 时全请求按高档计费"
-    },
-    {
-     "id": "claude-haiku-4-5",
-     "name": "Claude Haiku 4.5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": "2026-11-09",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 1.25
-        },
-        {
-         "ttl": "1h",
-         "price": 2
-        }
-       ],
-       "cacheRead": 0.1,
-       "output": 5
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "google",
-   "name": "Google (Gemini)",
-   "currency": "USD",
-   "source": "https://aistudio.google.com/docs/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": false,
-   "autoFetchReason": "官方页反爬（连接重置），需可用节点或人工核对",
-   "notes": "文本输入价；音频输入在部分型号更贵（如 Gemini 3 Flash/2.5 Flash $1.00）。Gemini 2.5 Pro 与 3.1 Pro 在 prompt>200K 时按长档计费。缓存另收存储费（如 3.x Flash $0.50~$1.00/1M tokens/小时）。",
-   "models": [
-    {
-     "id": "gemini-4-neon",
-     "name": "Gemini 4 Neon",
-     "contextWindow": 1050000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 3,
-       "output": 15,
-       "cacheRead": 0.15
-      }
-     ]
-    },
-    {
-     "id": "gemini-4-carbon",
-     "name": "Gemini 4 Carbon",
-     "contextWindow": 1050000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 10,
-       "cacheRead": 0.1
-      }
-     ],
-     "notes": "促销价至 November 30, 2026，之后价格见官网"
-    },
-    {
-     "id": "gemini-4-hydrogen",
-     "name": "Gemini 4 Hydrogen",
-     "contextWindow": 1050000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.5,
-       "output": 7.5,
-       "cacheRead": 0.075
-      }
-     ]
-    },
-    {
-     "id": "gemini-4-argon",
-     "name": "Gemini 4 Argon",
-     "contextWindow": 1050000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 10,
-       "cacheRead": 0.1
-      }
-     ],
-     "notes": "促销价至 November 30, 2026，之后价格见官网"
-    },
-    {
-     "id": "gemini-3.8-flash",
-     "name": "Gemini 3.8 Flash",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.75,
-       "output": 3.75,
-       "cacheRead": 0.075
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网"
-    },
-    {
-     "id": "gemini-3.6-flash",
-     "name": "Gemini 3.6 Flash",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.75,
-       "output": 3.75,
-       "cacheRead": 0.075
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网"
-    },
-    {
-     "id": "gemini-3.5-flash-lite",
-     "name": "Gemini 3.5 Flash-Lite",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "output": 2.5,
-       "cacheRead": 0.03
-      }
-     ]
-    },
-    {
-     "id": "gemini-3.1-pro-preview",
-     "name": "Gemini 3.1 Pro (Preview)",
-     "contextWindow": 1048576,
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 200000,
-       "input": 2,
-       "output": 12,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 18,
-       "cacheRead": 0.4
-      }
-     ],
-     "notes": "官方模型页确认 $2/$12（≤200K）；prompt>200K 全请求升档"
-    },
-    {
-     "id": "gemini-3.1-flash-lite",
-     "name": "Gemini 3.1 Flash-Lite",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.25,
-       "output": 1.5,
-       "cacheRead": 0.025
-      }
-     ]
-    },
-    {
-     "id": "gemini-3-flash-preview",
-     "name": "Gemini 3 Flash (Preview)",
-     "contextWindow": null,
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 3,
-       "cacheRead": 0.05
-      }
-     ]
-    },
-    {
-     "id": "gemini-2.5-pro",
-     "name": "Gemini 2.5 Pro",
-     "contextWindow": 1000000,
-     "status": "deprecated",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 200000,
-       "input": 1.25,
-       "output": 10,
-       "cacheRead": 0.125
-      },
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 15,
-       "cacheRead": 0.25
-      }
-     ],
-     "notes": "2026-12-01 起请求自动路由至 gemini-3.8-flash 并按其计费"
-    },
-    {
-     "id": "gemini-2.5-flash",
-     "name": "Gemini 2.5 Flash",
-     "contextWindow": 1000000,
-     "status": "deprecated",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "output": 2.5,
-       "cacheRead": 0.03
-      }
-     ],
-     "notes": "2026-12-01 起路由至 gemini-3.5-flash-lite；音频输入 $1.00"
-    },
-    {
-     "id": "gemini-2.5-flash-lite",
-     "name": "Gemini 2.5 Flash-Lite",
-     "contextWindow": 1000000,
-     "status": "deprecated",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.1,
-       "output": 0.4,
-       "cacheRead": 0.01
-      }
-     ]
-    },
-    {
-     "id": "gemini-3.5-transcribe-live",
-     "name": "Gemini 3.5 Transcribe Live",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 3.5,
-       "output": 21
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3.5-transcribe",
-     "name": "Gemini 3.5 Transcribe",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 12
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "genie-4",
-     "name": "Genie 4",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.5,
-       "output": 9
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-omni-1.2-flash",
-     "name": "Gemini Omni 1.2 Flash",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.5,
-       "output": 9
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-omni-1.1-flash",
-     "name": "Gemini Omni 1.1 Flash",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.5,
-       "output": 9
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3.5-live-translate-preview",
-     "name": "Gemini 3.5 Live Translate",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 3.5,
-       "output": 21
-      }
-     ],
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-nano-banana-2.1",
-     "name": "Gemini Nano Banana 2.1 🍌",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.5,
-       "output": 7.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3.1-flash-image",
-     "name": "Gemini 3.1 Flash Image (Nano Banana 2) 🍌",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 3
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3.1-flash-lite-image",
-     "name": "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite) 🍌",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.25,
-       "output": 1.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3.8-flash-tts",
-     "name": "Gemini 3.8 Flash TTS",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 9
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网",
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null
-    },
-    {
-     "id": "gemini-3.8-flash-lite-tts",
-     "name": "Gemini 3.8 Flash-Lite TTS",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 6
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网",
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null
-    },
-    {
-     "id": "gemini-3.1-flash-tts-preview",
-     "name": "Gemini 3.1 Flash TTS Preview",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "output": 20
-      }
-     ],
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-3-pro-image",
-     "name": "Gemini 3 Pro Image (Nano Banana Pro) 🍌",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 12
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-2.5-flash-image",
-     "name": "Gemini 2.5 Flash Image (Nano Banana) 🍌",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "output": 0.039
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-2.5-flash-preview-tts",
-     "name": "Gemini 2.5 Flash Preview TTS",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 10
-      }
-     ],
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-2.5-pro-preview-tts",
-     "name": "Gemini 2.5 Pro Preview TTS",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "output": 20
-      }
-     ],
-     "status": "preview",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "gemini-robotics-er-2",
-     "name": "Gemini Robotics ER 2 Preview",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "output": 5,
-       "cacheRead": 0.1
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网",
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null
-    },
-    {
-     "id": "gemini-robotics-er-2-streaming",
-     "name": "Gemini Robotics ER 2 Streaming Preview",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "output": 5
-      }
-     ],
-     "notes": "促销价至 December 31, 2026，之后价格见官网",
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null
-    }
-   ]
-  },
-  {
-   "id": "xai",
-   "name": "xAI (Grok)",
-   "currency": "USD",
-   "source": "https://docs.x.ai/developers/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": true,
-   "autoFetchUrl": "https://docs.x.ai/developers/pricing.md",
-   "notes": "标注「Long context ≥200K」的模型在 prompt≥200K 时全请求按长档计费。美国区域端点价格为全球价 1.1×。Batch 对列出的 7 个文本模型 -20%。Priority=2×。Grok 4.7 Fast（2×，仅 Cursor/Grok Build）未收录。",
-   "models": [
-    {
-     "id": "grok-4.7",
-     "name": "Grok 4.7",
-     "contextWindow": 500000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 2,
-       "output": 6,
-       "cacheRead": 0.5
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 12,
-       "cacheRead": 1
-      }
-     ]
-    },
-    {
-     "id": "grok-4.6",
-     "name": "Grok 4.6",
-     "contextWindow": 500000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 2,
-       "output": 6,
-       "cacheRead": 0.5
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 12,
-       "cacheRead": 1
-      }
-     ]
-    },
-    {
-     "id": "grok-4.5",
-     "name": "Grok 4.5",
-     "contextWindow": 500000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 2,
-       "output": 6,
-       "cacheRead": 0.3
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 12,
-       "cacheRead": 0.6
-      }
-     ]
-    },
-    {
-     "id": "grok-4.3",
-     "name": "Grok 4.3",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 1.25,
-       "output": 2.5,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 5,
-       "cacheRead": 0.4
-      }
-     ]
-    },
-    {
-     "id": "grok-4.20-0309-reasoning",
-     "name": "Grok 4.20 (0309) Reasoning",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 1.25,
-       "output": 2.5,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 5,
-       "cacheRead": 0.4
-      }
-     ]
-    },
-    {
-     "id": "grok-4.20-0309-non-reasoning",
-     "name": "Grok 4.20 (0309) Non-Reasoning",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 1.25,
-       "output": 2.5,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 5,
-       "cacheRead": 0.4
-      }
-     ]
-    },
-    {
-     "id": "grok-4.20-multi-agent-0309",
-     "name": "Grok 4.20 Multi-Agent (0309)",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 199999,
-       "input": 1.25,
-       "output": 2.5,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 2.5,
-       "output": 5,
-       "cacheRead": 0.4
-      }
-     ]
-    }
-   ]
-  },
-  {
-   "id": "deepseek",
-   "name": "DeepSeek",
-   "currency": "USD",
-   "source": "https://api-docs.deepseek.com/quick_start/pricing/",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": true,
-   "autoFetchUrl": "https://api-docs.deepseek.com/quick_start/pricing.md",
-   "notes": "标准价为高峰价；非高峰（UTC 01:00-04:00 与 06:00-10:00 之外的时段，含周末与中国法定节假日）= 高峰价×offPeakRatio。缓存命中即缓存读价，无单独写入费。旧名 deepseek-chat/deepseek-reasoner 已于 2026-07-24 弃用（不在官方价目页），未收录。",
-   "models": [
-    {
-     "id": "deepseek-flash",
-     "name": "DeepSeek Flash (V4.1-Flash)",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "offPeakRatio": 0.5,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "cacheRead": 0.006,
-       "output": 1.2
-      }
-     ],
-     "notes": "表内为高峰价；非高峰 输入$0.15/缓存$0.003/输出$0.60。旧名 deepseek-v4-flash 同价。",
-     "peakWindows": [
-      [
-       "01:00",
-       "04:00"
-      ],
-      [
-       "06:00",
-       "10:00"
       ]
-     ],
-     "peakNote": "UTC 工作日；法定节假日全天闲时（未内置日历，按工作日近似）"
     },
     {
-     "id": "deepseek-v4-pro",
-     "name": "DeepSeek V4 Pro",
-     "contextWindow": 1000000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "offPeakRatio": 0.5,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.32,
-       "cacheRead": 0.044,
-       "output": 3.96
-      }
-     ],
-     "notes": "表内为高峰价；非高峰 输入$0.66/缓存$0.022/输出$1.98",
-     "peakWindows": [
-      [
-       "01:00",
-       "04:00"
-      ],
-      [
-       "06:00",
-       "10:00"
+      "id": "anthropic",
+      "name": "Anthropic",
+      "currency": "USD",
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": "2026-11-09",
+      "autoFetch": false,
+      "autoFetchReason": "官方页区域限制（重定向至 App unavailable），需可用节点或人工核对",
+      "notes": "officialUpdatedAt 取自官方 rate card（Prices Effective: 2026-11-09）。Claude 4.7 及之后模型（含 Mythos Preview）采用新 tokenizer，同文本 token 数约多 30%。缓存命中价：Fable/Mythos 5.x=输入价 0.025x，Opus 5.5/Sonnet 5.5=0.05x，其余=0.1x。美国区域端点 +10%。Batch=5 折。",
+      "models": [
+        {
+          "id": "claude-fable-5-2",
+          "name": "Claude Fable 5.2",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 10.0
+                },
+                {
+                  "ttl": "1h",
+                  "price": 16.0
+                }
+              ],
+              "cacheRead": 0.2,
+              "output": 40.0
+            }
+          ]
+        },
+        {
+          "id": "claude-mythos-5-2",
+          "name": "Claude Mythos 5.2",
+          "contextWindow": null,
+          "status": "limited",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 10.0
+                },
+                {
+                  "ttl": "1h",
+                  "price": 16.0
+                }
+              ],
+              "cacheRead": 0.2,
+              "output": 40.0
+            }
+          ],
+          "notes": "限量：需组织验证"
+        },
+        {
+          "id": "claude-fable-5-1",
+          "name": "Claude Fable 5.1",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 12.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 20.0
+                }
+              ],
+              "cacheRead": 0.25,
+              "output": 50.0
+            }
+          ]
+        },
+        {
+          "id": "claude-mythos-5-1",
+          "name": "Claude Mythos 5.1",
+          "contextWindow": null,
+          "status": "limited",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 12.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 20.0
+                }
+              ],
+              "cacheRead": 0.25,
+              "output": 50.0
+            }
+          ]
+        },
+        {
+          "id": "claude-fable-5",
+          "name": "Claude Fable 5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 12.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 20.0
+                }
+              ],
+              "cacheRead": 1.0,
+              "output": 50.0
+            }
+          ]
+        },
+        {
+          "id": "claude-mythos-5",
+          "name": "Claude Mythos 5",
+          "contextWindow": null,
+          "status": "limited",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 12.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 20.0
+                }
+              ],
+              "cacheRead": 1.0,
+              "output": 50.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-5-5",
+          "name": "Claude Opus 5.5",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 5.0
+                },
+                {
+                  "ttl": "1h",
+                  "price": 8.0
+                }
+              ],
+              "cacheRead": 0.2,
+              "output": 20.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-5",
+          "name": "Claude Opus 5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 6.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 10.0
+                }
+              ],
+              "cacheRead": 0.5,
+              "output": 25.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-4-8",
+          "name": "Claude Opus 4.8",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 6.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 10.0
+                }
+              ],
+              "cacheRead": 0.5,
+              "output": 25.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 6.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 10.0
+                }
+              ],
+              "cacheRead": 0.5,
+              "output": 25.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 6.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 10.0
+                }
+              ],
+              "cacheRead": 0.5,
+              "output": 25.0
+            }
+          ]
+        },
+        {
+          "id": "claude-opus-4-5",
+          "name": "Claude Opus 4.5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 6.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 10.0
+                }
+              ],
+              "cacheRead": 0.5,
+              "output": 25.0
+            }
+          ]
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "name": "Claude Sonnet 5.5",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 4.0
+                }
+              ],
+              "cacheRead": 0.1,
+              "output": 10.0
+            }
+          ]
+        },
+        {
+          "id": "claude-sonnet-5",
+          "name": "Claude Sonnet 5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 2.5
+                },
+                {
+                  "ttl": "1h",
+                  "price": 4.0
+                }
+              ],
+              "cacheRead": 0.2,
+              "output": 10.0
+            }
+          ]
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 3.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 3.75
+                },
+                {
+                  "ttl": "1h",
+                  "price": 6.0
+                }
+              ],
+              "cacheRead": 0.3,
+              "output": 15.0
+            }
+          ]
+        },
+        {
+          "id": "claude-sonnet-4-5",
+          "name": "Claude Sonnet 4.5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 3.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 3.75
+                },
+                {
+                  "ttl": "1h",
+                  "price": 6.0
+                }
+              ],
+              "cacheRead": 0.3,
+              "output": 15.0
+            }
+          ]
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Claude Haiku 5.5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": 100000,
+              "input": 0.1,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 0.125
+                },
+                {
+                  "ttl": "1h",
+                  "price": 0.2
+                }
+              ],
+              "cacheRead": 0.01,
+              "output": 0.5
+            },
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 0.625
+                },
+                {
+                  "ttl": "1h",
+                  "price": 1.0
+                }
+              ],
+              "cacheRead": 0.05,
+              "output": 2.5
+            }
+          ],
+          "notes": "prompt（含缓存读写）>100K 时全请求按高档计费"
+        },
+        {
+          "id": "claude-haiku-4-5",
+          "name": "Claude Haiku 4.5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": "2026-11-09",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 1.25
+                },
+                {
+                  "ttl": "1h",
+                  "price": 2.0
+                }
+              ],
+              "cacheRead": 0.1,
+              "output": 5.0
+            }
+          ]
+        }
       ]
-     ],
-     "peakNote": "UTC 工作日；法定节假日全天闲时（未内置日历，按工作日近似）"
-    }
-   ]
-  },
-  {
-   "id": "zai",
-   "name": "智谱 Z.AI（国际）",
-   "currency": "USD",
-   "source": "https://docs.z.ai/guides/overview/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": true,
-   "autoFetchUrl": "https://docs.z.ai/guides/overview/pricing.md",
-   "notes": "Z.AI 国际站美元价；国内站见「智谱 bigmodel.cn（国内）」。缓存存储限时免费。",
-   "models": [
-    {
-     "id": "glm-5.3",
-     "name": "GLM-5.3",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.4,
-       "cacheRead": 0.26,
-       "output": 4.4
-      }
-     ]
     },
     {
-     "id": "glm-5.3-flash",
-     "name": "GLM-5.3 Flash",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.15,
-       "cacheRead": 0.03,
-       "output": 0.5
-      }
-     ]
-    },
-    {
-     "id": "glm-5.3-flashx",
-     "name": "GLM-5.3 FlashX",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.37,
-       "cacheRead": 0.075,
-       "output": 1.25
-      }
-     ]
-    },
-    {
-     "id": "glm-5.3-flashx-legal",
-     "name": "GLM-5.3 FlashX Legal",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.37,
-       "cacheRead": 0.075,
-       "output": 1.25
-      }
-     ]
-    },
-    {
-     "id": "glm-5.2",
-     "name": "GLM-5.2",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.4,
-       "cacheRead": 0.26,
-       "output": 4.4
-      }
-     ]
-    },
-    {
-     "id": "glm-5.1",
-     "name": "GLM-5.1",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.4,
-       "cacheRead": 0.26,
-       "output": 4.4
-      }
-     ]
-    },
-    {
-     "id": "glm-5",
-     "name": "GLM-5",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "cacheRead": 0.2,
-       "output": 3.2
-      }
-     ]
-    },
-    {
-     "id": "glm-4.7",
-     "name": "GLM-4.7",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.6,
-       "cacheRead": 0.11,
-       "output": 2.2
-      }
-     ]
-    },
-    {
-     "id": "glm-4.7-flashx",
-     "name": "GLM-4.7 FlashX",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.07,
-       "cacheRead": 0.01,
-       "output": 0.4
-      }
-     ]
-    },
-    {
-     "id": "glm-4.7-flash",
-     "name": "GLM-4.7 Flash",
-     "contextWindow": null,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "cacheRead": 0,
-       "output": 0
-      }
-     ],
-     "notes": "限时免费"
-    },
-    {
-     "id": "glm-4.6",
-     "name": "GLM-4.6",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.6,
-       "cacheRead": 0.11,
-       "output": 2.2
-      }
-     ]
-    },
-    {
-     "id": "glm-4.5",
-     "name": "GLM-4.5",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.6,
-       "cacheRead": 0.11,
-       "output": 2.2
-      }
-     ]
-    },
-    {
-     "id": "glm-4.5-x",
-     "name": "GLM-4.5 X",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2.2,
-       "cacheRead": 0.45,
-       "output": 8.9
-      }
-     ]
-    },
-    {
-     "id": "glm-4.5-air",
-     "name": "GLM-4.5 Air",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.2,
-       "cacheRead": 0.03,
-       "output": 1.1
-      }
-     ]
-    },
-    {
-     "id": "glm-4.5-airx",
-     "name": "GLM-4.5 AirX",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1.1,
-       "cacheRead": 0.22,
-       "output": 4.5
-      }
-     ]
-    },
-    {
-     "id": "glm-4.5-flash",
-     "name": "GLM-4.5 Flash",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "cacheRead": 0,
-       "output": 0
-      }
-     ],
-     "notes": "限时免费"
-    },
-    {
-     "id": "glm-4-32b-0414-128k",
-     "name": "GLM-4 32B (0414)",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.1,
-       "cacheRead": null,
-       "output": 0.1
-      }
-     ]
-    },
-    {
-     "id": "glm-4.6v",
-     "name": "GLM-4.6V",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "cacheRead": 0.05,
-       "output": 0.9
-      }
-     ],
-     "notes": "视觉理解模型"
-    },
-    {
-     "id": "glm-4.5v",
-     "name": "GLM-4.5V",
-     "contextWindow": 64000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.6,
-       "cacheRead": 0.11,
-       "output": 1.8
-      }
-     ],
-     "notes": "视觉理解模型"
-    },
-    {
-     "id": "glm-ocr",
-     "name": "GLM-OCR",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.03,
-       "cacheRead": null,
-       "output": 0.03
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.6v-flashx",
-     "name": "GLM-4.6V-FlashX",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.04,
-       "cacheRead": 0.004,
-       "output": 0.4
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.6v-flash",
-     "name": "GLM-4.6V-Flash",
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "cacheRead": 0,
-       "output": 0
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    }
-   ]
-  },
-  {
-   "id": "bigmodel-cn",
-   "name": "智谱 bigmodel.cn（国内）",
-   "currency": "CNY",
-   "source": "https://docs.bigmodel.cn/cn/guide/start/pricing",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": true,
-   "autoFetchUrl": "https://docs.bigmodel.cn/cn/guide/start/pricing.md",
-   "notes": "人民币价。国内价目按输入长度与输出长度复合分档；本表档位按 promptTokens 近似，输出<0.2K 的更低档价见各模型 notes。缓存存储限时免费。完整分档表以官网为准。",
-   "models": [
-    {
-     "id": "glm-4.7-cn",
-     "name": "GLM-4.7（国内）",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 3,
-       "output": 14,
-       "cacheRead": 0.6
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 16,
-       "cacheRead": 0.8
-      }
-     ],
-     "notes": "存在按输出长度细分的档位，已取“输出≥0.2K”行：输入 \\[0, 32K)，输出 \\[0, 0.2K);输入 \\[0, 32K)，输出 ≥0.2K"
-    },
-    {
-     "id": "glm-4.7-flashx-cn",
-     "name": "GLM-4.7 FlashX（国内）",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 3,
-       "cacheRead": 0.1
-      }
-     ]
-    },
-    {
-     "id": "glm-4.7-flash-cn",
-     "name": "GLM-4.7 Flash（国内）",
-     "contextWindow": 200000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": 0
-      }
-     ],
-     "notes": "限时免费"
-    },
-    {
-     "id": "glm-4.5-air-cn",
-     "name": "GLM-4.5 Air（国内）",
-     "contextWindow": 128000,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 0.8,
-       "output": 6,
-       "cacheRead": 0.16
-      },
-      {
-       "upToTokens": null,
-       "input": 1.2,
-       "output": 8,
-       "cacheRead": 0.24
-      }
-     ],
-     "notes": "存在按输出长度细分的档位，已取“输出≥0.2K”行：输入 \\[0, 32K)，输出 \\[0, 0.2K);输入 \\[0, 32K)，输出 ≥0.2K"
-    },
-    {
-     "id": "glm-5.3-cn",
-     "name": "GLM-5.3（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 8,
-       "output": 28,
-       "cacheRead": 2
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5.3-flash-cn",
-     "name": "GLM-5.3-Flash（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.8,
-       "output": 2.8,
-       "cacheRead": 0.23
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5.3-flashx-cn",
-     "name": "GLM-5.3-FlashX（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 7,
-       "cacheRead": 0.57
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5.3-flashx-legal-cn",
-     "name": "GLM-5.3-FlashX-Legal（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 7,
-       "cacheRead": 0.57
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5.2-cn",
-     "name": "GLM-5.2（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 8,
-       "output": 28,
-       "cacheRead": 2
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5.1-cn",
-     "name": "GLM-5.1（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 6,
-       "output": 24,
-       "cacheRead": 1.3
-      },
-      {
-       "upToTokens": null,
-       "input": 8,
-       "output": 28,
-       "cacheRead": 2
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5-turbo-cn",
-     "name": "GLM-5-Turbo（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 5,
-       "output": 22,
-       "cacheRead": 1.2
-      },
-      {
-       "upToTokens": null,
-       "input": 7,
-       "output": 26,
-       "cacheRead": 1.8
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5-cn",
-     "name": "GLM-5（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 4,
-       "output": 18,
-       "cacheRead": 1
-      },
-      {
-       "upToTokens": null,
-       "input": 6,
-       "output": 22,
-       "cacheRead": 1.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-plus-cn",
-     "name": "GLM-4-Plus（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "output": 5,
-       "cacheRead": 2.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-air-250414-cn",
-     "name": "GLM-4-Air-250414（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 0.5,
-       "cacheRead": 0.25
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-airx-cn",
-     "name": "GLM-4-AirX（国内）",
-     "contextWindow": 8000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 10,
-       "output": 10,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-long-cn",
-     "name": "GLM-4-Long（国内）",
-     "contextWindow": 1000000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 1,
-       "output": 1,
-       "cacheRead": 0.5
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-assistant-cn",
-     "name": "GLM-4-Assistant（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "output": 5,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-z1-air-cn",
-     "name": "GLM-Z1-Air（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.5,
-       "output": 0.5,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-z1-airx-cn",
-     "name": "GLM-Z1-AirX（国内）",
-     "contextWindow": 32000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 5,
-       "output": 5,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-z1-flashx-cn",
-     "name": "GLM-Z1-FlashX（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.1,
-       "output": 0.1,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-flashx-250414-cn",
-     "name": "GLM-4-FlashX-250414（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.1,
-       "output": 0.1,
-       "cacheRead": 0.05
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4-flash-250414-cn",
-     "name": "GLM-4-Flash-250414（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-z1-flash-cn",
-     "name": "GLM-Z1-Flash（国内）",
-     "contextWindow": 128000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-ocr-cn",
-     "name": "GLM-OCR（国内）",
-     "contextWindow": 32000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0.2,
-       "output": 0.2,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-5v-turbo-cn",
-     "name": "GLM-5V-Turbo（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 5,
-       "output": 22,
-       "cacheRead": 1.2
-      },
-      {
-       "upToTokens": null,
-       "input": 7,
-       "output": 26,
-       "cacheRead": 1.8
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.6v-cn",
-     "name": "GLM-4.6V（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 1,
-       "output": 3,
-       "cacheRead": 0.2
-      },
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 6,
-       "cacheRead": 0.4
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.6v-flashx-cn",
-     "name": "GLM-4.6V-FlashX（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 0.15,
-       "output": 1.5,
-       "cacheRead": 0.03
-      },
-      {
-       "upToTokens": null,
-       "input": 0.3,
-       "output": 3,
-       "cacheRead": 0.03
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.6v-flash-cn",
-     "name": "GLM-4.6V-Flash（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": 0
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.5v-cn",
-     "name": "GLM-4.5V（国内）",
-     "contextWindow": null,
-     "tiers": [
-      {
-       "upToTokens": 31999,
-       "input": 2,
-       "output": 6,
-       "cacheRead": 0.4
-      },
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 12,
-       "cacheRead": 0.8
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4v-plus-0111-cn",
-     "name": "GLM-4V-Plus-0111（国内）",
-     "contextWindow": 16000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 4,
-       "output": 4,
-       "cacheRead": 2
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4v-flash-cn",
-     "name": "GLM-4V-Flash（国内）",
-     "contextWindow": 4000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.1v-thinking-flashx-cn",
-     "name": "GLM-4.1V-Thinking-FlashX（国内）",
-     "contextWindow": 64000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 2,
-       "output": 2,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    },
-    {
-     "id": "glm-4.1v-thinking-flash-cn",
-     "name": "GLM-4.1V-Thinking-Flash（国内）",
-     "contextWindow": 64000,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 0,
-       "output": 0,
-       "cacheRead": null
-      }
-     ],
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "notes": "自动更新新增，请人工核对"
-    }
-   ]
-  },
-  {
-   "id": "moonshot",
-   "name": "Moonshot Kimi",
-   "currency": "CNY",
-   "source": "https://platform.kimi.com/docs/pricing/chat",
-   "checkedAt": "2026-11-24",
-   "officialUpdatedAt": null,
-   "autoFetch": false,
-   "autoFetchReason": "官网价格表为 JS 渲染（.md 为空表），需人工核对",
-   "notes": "人民币价。重复请求前缀自动启用 5min 上下文缓存，可选 1h TTL；K3 缓存写入按 TTL 单独计费。Batch=标准价 60%。K2 系列（k2.5/k2.6/k2.7-code 等）官方已列入下线表（存量用户可用至 2026 年 12 月底），moonshot-v1 全线下线，均未收录。",
-   "models": [
-    {
-     "id": "kimi-k3.1-pro",
-     "name": "Kimi K3.1 Pro",
-     "contextWindow": 1048576,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 13,
-       "output": 68,
-       "cacheRead": 1.3,
-       "cacheWrites": [
+      "id": "google",
+      "name": "Google (Gemini)",
+      "currency": "USD",
+      "source": "https://aistudio.google.com/docs/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": false,
+      "autoFetchReason": "官方页反爬（连接重置），需可用节点或人工核对",
+      "notes": "文本输入价；音频输入在部分型号更贵（如 Gemini 3 Flash/2.5 Flash $1.00）。Gemini 2.5 Pro 与 3.1 Pro 在 prompt>200K 时按长档计费。缓存另收存储费（如 3.x Flash $0.50~$1.00/1M tokens/小时）。",
+      "models": [
         {
-         "ttl": "5m",
-         "price": 13
+          "id": "gemini-4-neon",
+          "name": "Gemini 4 Neon",
+          "contextWindow": 1050000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 3.0,
+              "output": 15.0,
+              "cacheRead": 0.15
+            }
+          ]
         },
         {
-         "ttl": "1h",
-         "price": 26
-        }
-       ]
-      }
-     ]
-    },
-    {
-     "id": "kimi-k3.1-pro-highspeed",
-     "name": "Kimi K3.1 Pro Highspeed",
-     "contextWindow": 1048576,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 26,
-       "output": 136,
-       "cacheRead": 1.3,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 26
+          "id": "gemini-4-carbon",
+          "name": "Gemini 4 Carbon",
+          "contextWindow": 1050000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 10.0,
+              "cacheRead": 0.1
+            }
+          ],
+          "notes": "促销价至 November 30, 2026，之后价格见官网"
         },
         {
-         "ttl": "1h",
-         "price": 52
-        }
-       ]
-      }
-     ]
-    },
-    {
-     "id": "kimi-k3",
-     "name": "Kimi K3",
-     "contextWindow": 1048576,
-     "status": "active",
-     "fetchedAt": "2026-11-24",
-     "officialUpdatedAt": null,
-     "tiers": [
-      {
-       "upToTokens": null,
-       "input": 20,
-       "output": 100,
-       "cacheRead": 2,
-       "cacheWrites": [
-        {
-         "ttl": "5m",
-         "price": 20
+          "id": "gemini-4-hydrogen",
+          "name": "Gemini 4 Hydrogen",
+          "contextWindow": 1050000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.5,
+              "output": 7.5,
+              "cacheRead": 0.075
+            }
+          ]
         },
         {
-         "ttl": "1h",
-         "price": 40
+          "id": "gemini-4-argon",
+          "name": "Gemini 4 Argon",
+          "contextWindow": 1050000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 10.0,
+              "cacheRead": 0.1
+            }
+          ],
+          "notes": "促销价至 November 30, 2026，之后价格见官网"
+        },
+        {
+          "id": "gemini-3.8-flash",
+          "name": "Gemini 3.8 Flash",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.75,
+              "output": 3.75,
+              "cacheRead": 0.075
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网"
+        },
+        {
+          "id": "gemini-3.6-flash",
+          "name": "Gemini 3.6 Flash",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.75,
+              "output": 3.75,
+              "cacheRead": 0.075
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网"
+        },
+        {
+          "id": "gemini-3.5-flash-lite",
+          "name": "Gemini 3.5 Flash-Lite",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "output": 2.5,
+              "cacheRead": 0.03
+            }
+          ]
+        },
+        {
+          "id": "gemini-3.1-pro-preview",
+          "name": "Gemini 3.1 Pro (Preview)",
+          "contextWindow": 1048576,
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 200000,
+              "input": 2.0,
+              "output": 12.0,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 18.0,
+              "cacheRead": 0.4
+            }
+          ],
+          "notes": "官方模型页确认 $2/$12（≤200K）；prompt>200K 全请求升档"
+        },
+        {
+          "id": "gemini-3.1-flash-lite",
+          "name": "Gemini 3.1 Flash-Lite",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.25,
+              "output": 1.5,
+              "cacheRead": 0.025
+            }
+          ]
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "name": "Gemini 3 Flash (Preview)",
+          "contextWindow": null,
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 3.0,
+              "cacheRead": 0.05
+            }
+          ]
+        },
+        {
+          "id": "gemini-2.5-pro",
+          "name": "Gemini 2.5 Pro",
+          "contextWindow": 1000000,
+          "status": "deprecated",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 200000,
+              "input": 1.25,
+              "output": 10.0,
+              "cacheRead": 0.125
+            },
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 15.0,
+              "cacheRead": 0.25
+            }
+          ],
+          "notes": "2026-12-01 起请求自动路由至 gemini-3.8-flash 并按其计费"
+        },
+        {
+          "id": "gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash",
+          "contextWindow": 1000000,
+          "status": "deprecated",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "output": 2.5,
+              "cacheRead": 0.03
+            }
+          ],
+          "notes": "2026-12-01 起路由至 gemini-3.5-flash-lite；音频输入 $1.00"
+        },
+        {
+          "id": "gemini-2.5-flash-lite",
+          "name": "Gemini 2.5 Flash-Lite",
+          "contextWindow": 1000000,
+          "status": "deprecated",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.1,
+              "output": 0.4,
+              "cacheRead": 0.01
+            }
+          ]
+        },
+        {
+          "id": "gemini-3.5-transcribe-live",
+          "name": "Gemini 3.5 Transcribe Live",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 3.5,
+              "output": 21.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3.5-transcribe",
+          "name": "Gemini 3.5 Transcribe",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 12.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "genie-4",
+          "name": "Genie 4",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.5,
+              "output": 9.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-omni-1.2-flash",
+          "name": "Gemini Omni 1.2 Flash",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.5,
+              "output": 9.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-omni-1.1-flash",
+          "name": "Gemini Omni 1.1 Flash",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.5,
+              "output": 9.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3.5-live-translate-preview",
+          "name": "Gemini 3.5 Live Translate",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 3.5,
+              "output": 21.0
+            }
+          ],
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-nano-banana-2.1",
+          "name": "Gemini Nano Banana 2.1 🍌",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.5,
+              "output": 7.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3.1-flash-image",
+          "name": "Gemini 3.1 Flash Image (Nano Banana 2) 🍌",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 3.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3.1-flash-lite-image",
+          "name": "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite) 🍌",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.25,
+              "output": 1.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3.8-flash-tts",
+          "name": "Gemini 3.8 Flash TTS",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 9.0
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网",
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null
+        },
+        {
+          "id": "gemini-3.8-flash-lite-tts",
+          "name": "Gemini 3.8 Flash-Lite TTS",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 6.0
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网",
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null
+        },
+        {
+          "id": "gemini-3.1-flash-tts-preview",
+          "name": "Gemini 3.1 Flash TTS Preview",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "output": 20.0
+            }
+          ],
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-3-pro-image",
+          "name": "Gemini 3 Pro Image (Nano Banana Pro) 🍌",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 12.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-2.5-flash-image",
+          "name": "Gemini 2.5 Flash Image (Nano Banana) 🍌",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "output": 0.039
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-2.5-flash-preview-tts",
+          "name": "Gemini 2.5 Flash Preview TTS",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 10.0
+            }
+          ],
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-2.5-pro-preview-tts",
+          "name": "Gemini 2.5 Pro Preview TTS",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "output": 20.0
+            }
+          ],
+          "status": "preview",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "gemini-robotics-er-2",
+          "name": "Gemini Robotics ER 2 Preview",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "output": 5.0,
+              "cacheRead": 0.1
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网",
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null
+        },
+        {
+          "id": "gemini-robotics-er-2-streaming",
+          "name": "Gemini Robotics ER 2 Streaming Preview",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "output": 5.0
+            }
+          ],
+          "notes": "促销价至 December 31, 2026，之后价格见官网",
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null
         }
-       ]
-      }
-     ]
+      ]
+    },
+    {
+      "id": "xai",
+      "name": "xAI (Grok)",
+      "currency": "USD",
+      "source": "https://docs.x.ai/developers/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": true,
+      "autoFetchUrl": "https://docs.x.ai/developers/pricing.md",
+      "notes": "标注「Long context ≥200K」的模型在 prompt≥200K 时全请求按长档计费。美国区域端点价格为全球价 1.1×。Batch 对列出的 7 个文本模型 -20%。Priority=2×。Grok 4.7 Fast（2×，仅 Cursor/Grok Build）未收录。",
+      "models": [
+        {
+          "id": "grok-4.7",
+          "name": "Grok 4.7",
+          "contextWindow": 500000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 2.0,
+              "output": 6.0,
+              "cacheRead": 0.5
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 12.0,
+              "cacheRead": 1.0
+            }
+          ]
+        },
+        {
+          "id": "grok-4.6",
+          "name": "Grok 4.6",
+          "contextWindow": 500000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 2.0,
+              "output": 6.0,
+              "cacheRead": 0.5
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 12.0,
+              "cacheRead": 1.0
+            }
+          ]
+        },
+        {
+          "id": "grok-4.5",
+          "name": "Grok 4.5",
+          "contextWindow": 500000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 2.0,
+              "output": 6.0,
+              "cacheRead": 0.3
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 12.0,
+              "cacheRead": 0.6
+            }
+          ]
+        },
+        {
+          "id": "grok-4.3",
+          "name": "Grok 4.3",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 1.25,
+              "output": 2.5,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 5.0,
+              "cacheRead": 0.4
+            }
+          ]
+        },
+        {
+          "id": "grok-4.20-0309-reasoning",
+          "name": "Grok 4.20 (0309) Reasoning",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 1.25,
+              "output": 2.5,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 5.0,
+              "cacheRead": 0.4
+            }
+          ]
+        },
+        {
+          "id": "grok-4.20-0309-non-reasoning",
+          "name": "Grok 4.20 (0309) Non-Reasoning",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 1.25,
+              "output": 2.5,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 5.0,
+              "cacheRead": 0.4
+            }
+          ]
+        },
+        {
+          "id": "grok-4.20-multi-agent-0309",
+          "name": "Grok 4.20 Multi-Agent (0309)",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 199999,
+              "input": 1.25,
+              "output": 2.5,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 2.5,
+              "output": 5.0,
+              "cacheRead": 0.4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "currency": "USD",
+      "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": true,
+      "autoFetchUrl": "https://api-docs.deepseek.com/quick_start/pricing.md",
+      "notes": "标准价为高峰价；非高峰（UTC 01:00-04:00 与 06:00-10:00 之外的时段，含周末与中国法定节假日）= 高峰价×offPeakRatio。缓存命中即缓存读价，无单独写入费。旧名 deepseek-chat/deepseek-reasoner 已于 2026-07-24 弃用（不在官方价目页），未收录。",
+      "models": [
+        {
+          "id": "deepseek-flash",
+          "name": "DeepSeek Flash (V4.1-Flash)",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "offPeakRatio": 0.5,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "cacheRead": 0.006,
+              "output": 1.2
+            }
+          ],
+          "notes": "表内为高峰价；非高峰 输入$0.15/缓存$0.003/输出$0.60。旧名 deepseek-v4-flash 同价。",
+          "peakWindows": [
+            [
+              "01:00",
+              "04:00"
+            ],
+            [
+              "06:00",
+              "10:00"
+            ]
+          ],
+          "peakNote": "UTC 工作日；法定节假日全天闲时（未内置日历，按工作日近似）"
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "contextWindow": 1000000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "offPeakRatio": 0.5,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.32,
+              "cacheRead": 0.044,
+              "output": 3.96
+            }
+          ],
+          "notes": "表内为高峰价；非高峰 输入$0.66/缓存$0.022/输出$1.98",
+          "peakWindows": [
+            [
+              "01:00",
+              "04:00"
+            ],
+            [
+              "06:00",
+              "10:00"
+            ]
+          ],
+          "peakNote": "UTC 工作日；法定节假日全天闲时（未内置日历，按工作日近似）"
+        }
+      ]
+    },
+    {
+      "id": "zai",
+      "name": "智谱 Z.AI（国际）",
+      "currency": "USD",
+      "source": "https://docs.z.ai/guides/overview/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": true,
+      "autoFetchUrl": "https://docs.z.ai/guides/overview/pricing.md",
+      "notes": "Z.AI 国际站美元价；国内站见「智谱 bigmodel.cn（国内）」。缓存存储限时免费。",
+      "models": [
+        {
+          "id": "glm-5.3",
+          "name": "GLM-5.3",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.4,
+              "cacheRead": 0.26,
+              "output": 4.4
+            }
+          ]
+        },
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM-5.3 Flash",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.15,
+              "cacheRead": 0.03,
+              "output": 0.5
+            }
+          ]
+        },
+        {
+          "id": "glm-5.3-flashx",
+          "name": "GLM-5.3 FlashX",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.37,
+              "cacheRead": 0.075,
+              "output": 1.25
+            }
+          ]
+        },
+        {
+          "id": "glm-5.3-flashx-legal",
+          "name": "GLM-5.3 FlashX Legal",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.37,
+              "cacheRead": 0.075,
+              "output": 1.25
+            }
+          ]
+        },
+        {
+          "id": "glm-5.2",
+          "name": "GLM-5.2",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.4,
+              "cacheRead": 0.26,
+              "output": 4.4
+            }
+          ]
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.4,
+              "cacheRead": 0.26,
+              "output": 4.4
+            }
+          ]
+        },
+        {
+          "id": "glm-5",
+          "name": "GLM-5",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "cacheRead": 0.2,
+              "output": 3.2
+            }
+          ]
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.6,
+              "cacheRead": 0.11,
+              "output": 2.2
+            }
+          ]
+        },
+        {
+          "id": "glm-4.7-flashx",
+          "name": "GLM-4.7 FlashX",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.07,
+              "cacheRead": 0.01,
+              "output": 0.4
+            }
+          ]
+        },
+        {
+          "id": "glm-4.7-flash",
+          "name": "GLM-4.7 Flash",
+          "contextWindow": null,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "cacheRead": 0.0,
+              "output": 0.0
+            }
+          ],
+          "notes": "限时免费"
+        },
+        {
+          "id": "glm-4.6",
+          "name": "GLM-4.6",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.6,
+              "cacheRead": 0.11,
+              "output": 2.2
+            }
+          ]
+        },
+        {
+          "id": "glm-4.5",
+          "name": "GLM-4.5",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.6,
+              "cacheRead": 0.11,
+              "output": 2.2
+            }
+          ]
+        },
+        {
+          "id": "glm-4.5-x",
+          "name": "GLM-4.5 X",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.2,
+              "cacheRead": 0.45,
+              "output": 8.9
+            }
+          ]
+        },
+        {
+          "id": "glm-4.5-air",
+          "name": "GLM-4.5 Air",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.2,
+              "cacheRead": 0.03,
+              "output": 1.1
+            }
+          ]
+        },
+        {
+          "id": "glm-4.5-airx",
+          "name": "GLM-4.5 AirX",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.1,
+              "cacheRead": 0.22,
+              "output": 4.5
+            }
+          ]
+        },
+        {
+          "id": "glm-4.5-flash",
+          "name": "GLM-4.5 Flash",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "cacheRead": 0.0,
+              "output": 0.0
+            }
+          ],
+          "notes": "限时免费"
+        },
+        {
+          "id": "glm-4-32b-0414-128k",
+          "name": "GLM-4 32B (0414)",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.1,
+              "cacheRead": null,
+              "output": 0.1
+            }
+          ]
+        },
+        {
+          "id": "glm-4.6v",
+          "name": "GLM-4.6V",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "cacheRead": 0.05,
+              "output": 0.9
+            }
+          ],
+          "notes": "视觉理解模型"
+        },
+        {
+          "id": "glm-4.5v",
+          "name": "GLM-4.5V",
+          "contextWindow": 64000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.6,
+              "cacheRead": 0.11,
+              "output": 1.8
+            }
+          ],
+          "notes": "视觉理解模型"
+        },
+        {
+          "id": "glm-ocr",
+          "name": "GLM-OCR",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.03,
+              "cacheRead": null,
+              "output": 0.03
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.6v-flashx",
+          "name": "GLM-4.6V-FlashX",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.04,
+              "cacheRead": 0.004,
+              "output": 0.4
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.6v-flash",
+          "name": "GLM-4.6V-Flash",
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "cacheRead": 0.0,
+              "output": 0.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        }
+      ]
+    },
+    {
+      "id": "bigmodel-cn",
+      "name": "智谱 bigmodel.cn（国内）",
+      "currency": "CNY",
+      "source": "https://docs.bigmodel.cn/cn/guide/start/pricing",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": true,
+      "autoFetchUrl": "https://docs.bigmodel.cn/cn/guide/start/pricing.md",
+      "notes": "人民币价。国内价目按输入长度与输出长度复合分档；本表档位按 promptTokens 近似，输出<0.2K 的更低档价见各模型 notes。缓存存储限时免费。完整分档表以官网为准。",
+      "models": [
+        {
+          "id": "glm-4.7-cn",
+          "name": "GLM-4.7（国内）",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 3.0,
+              "output": 14.0,
+              "cacheRead": 0.6
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 16.0,
+              "cacheRead": 0.8
+            }
+          ],
+          "notes": "存在按输出长度细分的档位，已取“输出≥0.2K”行：输入 \\[0, 32K)，输出 \\[0, 0.2K);输入 \\[0, 32K)，输出 ≥0.2K"
+        },
+        {
+          "id": "glm-4.7-flashx-cn",
+          "name": "GLM-4.7 FlashX（国内）",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 3.0,
+              "cacheRead": 0.1
+            }
+          ]
+        },
+        {
+          "id": "glm-4.7-flash-cn",
+          "name": "GLM-4.7 Flash（国内）",
+          "contextWindow": 200000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": 0.0
+            }
+          ],
+          "notes": "限时免费"
+        },
+        {
+          "id": "glm-4.5-air-cn",
+          "name": "GLM-4.5 Air（国内）",
+          "contextWindow": 128000,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 0.8,
+              "output": 6.0,
+              "cacheRead": 0.16
+            },
+            {
+              "upToTokens": null,
+              "input": 1.2,
+              "output": 8.0,
+              "cacheRead": 0.24
+            }
+          ],
+          "notes": "存在按输出长度细分的档位，已取“输出≥0.2K”行：输入 \\[0, 32K)，输出 \\[0, 0.2K);输入 \\[0, 32K)，输出 ≥0.2K"
+        },
+        {
+          "id": "glm-5.3-cn",
+          "name": "GLM-5.3（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "output": 28.0,
+              "cacheRead": 2.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5.3-flash-cn",
+          "name": "GLM-5.3-Flash（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.8,
+              "output": 2.8,
+              "cacheRead": 0.23
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5.3-flashx-cn",
+          "name": "GLM-5.3-FlashX（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 7.0,
+              "cacheRead": 0.57
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5.3-flashx-legal-cn",
+          "name": "GLM-5.3-FlashX-Legal（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 7.0,
+              "cacheRead": 0.57
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5.2-cn",
+          "name": "GLM-5.2（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "output": 28.0,
+              "cacheRead": 2.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5.1-cn",
+          "name": "GLM-5.1（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 6.0,
+              "output": 24.0,
+              "cacheRead": 1.3
+            },
+            {
+              "upToTokens": null,
+              "input": 8.0,
+              "output": 28.0,
+              "cacheRead": 2.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5-turbo-cn",
+          "name": "GLM-5-Turbo（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 5.0,
+              "output": 22.0,
+              "cacheRead": 1.2
+            },
+            {
+              "upToTokens": null,
+              "input": 7.0,
+              "output": 26.0,
+              "cacheRead": 1.8
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5-cn",
+          "name": "GLM-5（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 4.0,
+              "output": 18.0,
+              "cacheRead": 1.0
+            },
+            {
+              "upToTokens": null,
+              "input": 6.0,
+              "output": 22.0,
+              "cacheRead": 1.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-plus-cn",
+          "name": "GLM-4-Plus（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "output": 5.0,
+              "cacheRead": 2.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-air-250414-cn",
+          "name": "GLM-4-Air-250414（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 0.5,
+              "cacheRead": 0.25
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-airx-cn",
+          "name": "GLM-4-AirX（国内）",
+          "contextWindow": 8000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 10.0,
+              "output": 10.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-long-cn",
+          "name": "GLM-4-Long（国内）",
+          "contextWindow": 1000000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 1.0,
+              "output": 1.0,
+              "cacheRead": 0.5
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-assistant-cn",
+          "name": "GLM-4-Assistant（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "output": 5.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-z1-air-cn",
+          "name": "GLM-Z1-Air（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.5,
+              "output": 0.5,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-z1-airx-cn",
+          "name": "GLM-Z1-AirX（国内）",
+          "contextWindow": 32000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 5.0,
+              "output": 5.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-z1-flashx-cn",
+          "name": "GLM-Z1-FlashX（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.1,
+              "output": 0.1,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-flashx-250414-cn",
+          "name": "GLM-4-FlashX-250414（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.1,
+              "output": 0.1,
+              "cacheRead": 0.05
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4-flash-250414-cn",
+          "name": "GLM-4-Flash-250414（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-z1-flash-cn",
+          "name": "GLM-Z1-Flash（国内）",
+          "contextWindow": 128000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-ocr-cn",
+          "name": "GLM-OCR（国内）",
+          "contextWindow": 32000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.2,
+              "output": 0.2,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-5v-turbo-cn",
+          "name": "GLM-5V-Turbo（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 5.0,
+              "output": 22.0,
+              "cacheRead": 1.2
+            },
+            {
+              "upToTokens": null,
+              "input": 7.0,
+              "output": 26.0,
+              "cacheRead": 1.8
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.6v-cn",
+          "name": "GLM-4.6V（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 1.0,
+              "output": 3.0,
+              "cacheRead": 0.2
+            },
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 6.0,
+              "cacheRead": 0.4
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.6v-flashx-cn",
+          "name": "GLM-4.6V-FlashX（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 0.15,
+              "output": 1.5,
+              "cacheRead": 0.03
+            },
+            {
+              "upToTokens": null,
+              "input": 0.3,
+              "output": 3.0,
+              "cacheRead": 0.03
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.6v-flash-cn",
+          "name": "GLM-4.6V-Flash（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": 0.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.5v-cn",
+          "name": "GLM-4.5V（国内）",
+          "contextWindow": null,
+          "tiers": [
+            {
+              "upToTokens": 31999,
+              "input": 2.0,
+              "output": 6.0,
+              "cacheRead": 0.4
+            },
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 12.0,
+              "cacheRead": 0.8
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4v-plus-0111-cn",
+          "name": "GLM-4V-Plus-0111（国内）",
+          "contextWindow": 16000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 4.0,
+              "output": 4.0,
+              "cacheRead": 2.0
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4v-flash-cn",
+          "name": "GLM-4V-Flash（国内）",
+          "contextWindow": 4000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.1v-thinking-flashx-cn",
+          "name": "GLM-4.1V-Thinking-FlashX（国内）",
+          "contextWindow": 64000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 2.0,
+              "output": 2.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        },
+        {
+          "id": "glm-4.1v-thinking-flash-cn",
+          "name": "GLM-4.1V-Thinking-Flash（国内）",
+          "contextWindow": 64000,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 0.0,
+              "output": 0.0,
+              "cacheRead": null
+            }
+          ],
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "notes": "自动更新新增，请人工核对"
+        }
+      ]
+    },
+    {
+      "id": "moonshot",
+      "name": "Moonshot Kimi",
+      "currency": "CNY",
+      "source": "https://platform.kimi.com/docs/pricing/chat",
+      "checkedAt": "2026-11-24",
+      "officialUpdatedAt": null,
+      "autoFetch": false,
+      "autoFetchReason": "官网价格表为 JS 渲染（.md 为空表），需人工核对",
+      "notes": "人民币价。重复请求前缀自动启用 5min 上下文缓存，可选 1h TTL；K3 缓存写入按 TTL 单独计费。Batch=标准价 60%。K2 系列（k2.5/k2.6/k2.7-code 等）官方已列入下线表（存量用户可用至 2026 年 12 月底），moonshot-v1 全线下线，均未收录。",
+      "models": [
+        {
+          "id": "kimi-k3.1-pro",
+          "name": "Kimi K3.1 Pro",
+          "contextWindow": 1048576,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 13,
+              "output": 68,
+              "cacheRead": 1.3,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 13
+                },
+                {
+                  "ttl": "1h",
+                  "price": 26
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kimi-k3.1-pro-highspeed",
+          "name": "Kimi K3.1 Pro Highspeed",
+          "contextWindow": 1048576,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 26,
+              "output": 136,
+              "cacheRead": 1.3,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 26
+                },
+                {
+                  "ttl": "1h",
+                  "price": 52
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "kimi-k3",
+          "name": "Kimi K3",
+          "contextWindow": 1048576,
+          "status": "active",
+          "fetchedAt": "2026-11-24",
+          "officialUpdatedAt": null,
+          "tiers": [
+            {
+              "upToTokens": null,
+              "input": 20,
+              "output": 100,
+              "cacheRead": 2,
+              "cacheWrites": [
+                {
+                  "ttl": "5m",
+                  "price": 20
+                },
+                {
+                  "ttl": "1h",
+                  "price": 40
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
-   ]
-  }
- ]
+  ]
 }

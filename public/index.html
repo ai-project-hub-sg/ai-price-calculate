@@ -105,6 +105,7 @@
       <span class="hint" id="updInfo"></span>
       <input type="text" id="offSearch" placeholder="搜索模型" style="margin-left:auto">
     </div>
+    <div id="updStatus" style="margin:4px 0;font-size:12px"></div>
     <div style="overflow-x:auto"><table id="offTable"></table></div>
   </section>
 
@@ -132,7 +133,9 @@
       <span class="hint">列：调用时间,中转站,服务商,模型,输入,输出,缓存读,缓存写,实际扣费,备注</span>
     </div>
     <textarea id="csvText" rows="4" style="width:100%;font:12px monospace" placeholder="粘贴 CSV 或选择文件"></textarea>
-    <div class="toolbar" style="margin-top:6px"><button class="primary" id="csvRun">核对</button><span class="hint" id="csvInfo"></span></div>
+    <div class="toolbar" style="margin-top:6px"><button class="primary" id="csvRun">核对</button>
+      <label class="hint">一致判据 |差|≤<input type="number" id="tolPct" value="0.5" step="0.1" style="width:56px">% 或 ≤<input type="number" id="tolAbs" value="0.0005" step="0.0005" style="width:76px">（取大者）</label>
+      <span class="hint" id="csvInfo"></span></div>
     <div style="overflow-x:auto"><table id="reconTable"></table></div>
   </section>
 
@@ -332,17 +335,27 @@ function drawer(title,bodyKids,onSave){
 }
 const row=(label,...kids)=>h('div',{class:'row'},h('span',{},label),...kids);
 const inp=(v,ty='text')=>h('input',{type:ty,value:v});
+/** 配比编辑：null=继承上级；自填=四分量。返回 {el,get()} */
+function mixEditor(label,cur){
+  const sel=h('select',{},h('option',{value:''},'继承上级'),h('option',{value:'1',selected:cur},'自填'));
+  const i=inp(cur?.input??'','number'),c=inp(cur?.cacheRead??'','number'),w=inp(cur?.cacheWrite??'','number'),o=inp(cur?.output??'','number');
+  [i,c,w,o].forEach(x=>{x.style.width='56px';x.disabled=!cur;});
+  sel.onchange=()=>[i,c,w,o].forEach(x=>x.disabled=sel.value!=='1');
+  return {el:row(label,sel,'输入',i,'缓读',c,'缓写',w,'输出',o),
+    get:()=>sel.value!=='1'?null:{input:+i.value||0,cacheRead:+c.value||0,cacheWrite:+w.value||0,output:+o.value||0}};
+}
 
 function editStation(st){
   const name=inp(st.name),url=inp(st.url||''),disc=inp(st.defaultDiscount??1,'number'),
         tp=h('input',{type:'checkbox',checked:st.tieredPricing?.enabled!==false}),
         en=h('input',{type:'checkbox',checked:st.enabled}),notes=inp(st.notes||'');
+  const mx=mixEditor('配比',st.mix);
   drawer('编辑站点',[row('名称',name),row('URL',url,h('small',{class:'dim'},'备注用')),
     row('默认折扣',disc,h('small',{class:'dim'},'0<x≤10')),row('分档计价',tp),row('启用',en),row('备注',notes),
-    h('div',{class:'hint'},'改名时默认提供商若仍与旧站名同名则联动改名')],
+    mx.el,h('div',{class:'hint'},'配比继承：模型覆盖 > 提供商 > 站 > 档案场景；改名时默认提供商若仍与旧站名同名则联动改名')],
     ()=>{const d=+disc.value;if(!(d>0&&d<=10)){alert('折扣须在(0,10]');return false;}
       C.renameStation(st,name.value.trim()||st.name);
-      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;});
+      st.url=url.value;st.defaultDiscount=d;st.tieredPricing={enabled:tp.checked};st.enabled=en.checked;st.notes=notes.value;st.mix=mx.get();});
 }
 
 function editProvider(st,pr){
@@ -382,10 +395,11 @@ function editProvider(st,pr){
     }
   };
   renderScope();
+  const mx=mixEditor('配比',pr.mix);
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
-    row('默认折扣',discMode,disc),vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
+    row('默认折扣',discMode,disc),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
     ()=>{pr.name=name.value.trim()||pr.name;pr.enabled=en.checked;pr.tieredPricing={enabled:tp.checked};
-      pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;});
+      pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;pr.mix=mx.get();});
 }
 
 function editModelOverride(pr,o){
@@ -421,10 +435,11 @@ function editModelOverride(pr,o){
       h('small',{class:'dim'},'　校验：禁止重叠与缺漏，保存时检查'));
   };
   renderT();
+  const mx=mixEditor('配比',o.mix);
   drawer(`编辑模型覆盖 — ${mid}`,[row('计价方式',h('label',{},'折扣',disc),h('label',{},useCustom,'自定义基础价')),
-    tierBox,errBox,row('分档计价',tp)],
+    tierBox,errBox,row('分档计价',tp),mx.el],
     ()=>{
-      const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked}};
+      const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked},mix:mx.get()};
       if(useCustom.checked){
         const {errors,tiers}=C.tiersFromEditor(rows);
         if(errors.length){errBox.innerHTML='';errors.forEach(e=>errBox.append(h('div',{},'⚠ '+e)));return false;}
@@ -506,7 +521,7 @@ function renderRecon(){
       let verdict,cls='';
       if(r.status!=='ok'){verdict=r.status;cls='';bad++;}
       else{
-        const tol=Math.max(Math.abs(r.actual)*0.005,1e-6);
+        const tol=Math.max((+$('#tolAbs').value||0),Math.abs(r.actual)*(+$('#tolPct').value||0)/100);
         const d=Math.abs(r.diff);
         if(r.flags.length){verdict='⚠ '+r.flags.join('；');cls='warn';warn++;}
         verdict=(verdict?verdict+' ':'')+(d<=tol?'✓ 一致':`差 ${(r.diff>0?'+':'')}${r.diff.toPrecision(3)}`);
@@ -558,15 +573,32 @@ function bindGlobal(){
   $('#offSearch').oninput=renderOfficial;
   $('#updBtn').onclick=async()=>{
     if(!state.backend)return alert('需要后端：python -m server.app');
-    $('#updInfo').textContent='更新中…';
-    try{const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const btn=$('#updBtn'),box=$('#updStatus');
+    btn.disabled=true;box.innerHTML='';
+    const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
+    log('已提交更新任务…');
+    try{
+      const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
       const {jobId}=await r.json();
-      const poll=setInterval(async()=>{const j=await(await fetch('/api/jobs/'+jobId)).json();
-        if(j.status!=='running'){clearInterval(poll);
-          const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
-          $('#updInfo').textContent=j.status==='done'?'更新完成（详见控制台报告）':'失败: '+j.error;
-          console.log('pricing update report',j.report);render();}},1500);
-    }catch(e){$('#updInfo').textContent='更新失败: '+e.message;}
+      const t0=Date.now();
+      const poll=setInterval(async()=>{
+        try{
+          const j=await(await fetch('/api/jobs/'+jobId)).json();
+          if(j.status==='running'){const last=(j.log||[]).slice(-1)[0];
+            box.lastChild&&box.lastChild.textContent.startsWith('运行中')?box.lastChild.remove():0;
+            log(`运行中… ${((Date.now()-t0)/1000).toFixed(0)}s`+(last?` · ${last}`:''));return;}
+          clearInterval(poll);btn.disabled=false;
+          if(j.status==='done'){
+            const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
+            log('✓ 更新完成');
+            if(j.report&&j.report.byProvider)for(const [k,v] of Object.entries(j.report.byProvider))
+              log(`　${k}: ${typeof v==='object'?JSON.stringify(v):v}`);
+            renderOfficial();
+          }else log('✗ 失败: '+(j.error||'未知'),'danger');
+        }catch(e){/* 轮询失败下一轮再试 */}
+      },1500);
+    }catch(e){btn.disabled=false;log('✗ 请求失败: '+e.message);}
   };
 }
 boot();
