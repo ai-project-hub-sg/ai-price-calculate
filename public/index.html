@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.20 · bc4199a</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.21 · f27af8d</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -493,7 +493,7 @@ function scopeEditor(scope,onVendorChange,parentScope){
     const showing=panel.style.display!=='none';
     if(openScopeDrop)openScopeDrop.style.display='none';
     panel.style.display=showing?'none':'block';openScopeDrop=showing?null:panel;}});
-  const panel=h('div',{class:'pop',style:'display:none;min-width:340px;max-width:420px;max-height:380px'});
+  const panel=h('div',{class:'pop',onclick:e=>e.stopPropagation(),style:'display:none;min-width:340px;max-width:420px;max-height:380px'});
   const commit=()=>{derive();btn.textContent=btnLabel();renderTree();onVendorChange&&onVendorChange(Object.keys(scope.vendors));};
   const path={v:null,s:null};
   const col='width:132px;max-height:280px;overflow-y:auto;border-right:1px solid #e7e5e4;padding:2px 4px;flex:none';
