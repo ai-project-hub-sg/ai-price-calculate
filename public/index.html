@@ -393,9 +393,10 @@ const inp=(v,ty='text')=>h('input',{type:ty,value:v});
 function mixEditor(label,cur){
   const sel=h('select',{},h('option',{value:''},'继承上级'),h('option',{value:'1',selected:cur},'自填'));
   const i=inp(cur?.input??'','number'),c=inp(cur?.cacheRead??'','number'),w=inp(cur?.cacheWrite??'','number'),o=inp(cur?.output??'','number');
-  [i,c,w,o].forEach(x=>{x.style.width='56px';x.disabled=!cur;});
-  sel.onchange=()=>[i,c,w,o].forEach(x=>x.disabled=sel.value!=='1');
-  return {el:row(label,sel,'输入',i,'缓读',c,'缓写',w,'输出',o),
+  [i,c,w,o].forEach(x=>x.style.width='56px');
+  const wrap=h('span',{style:cur?'':'display:none'},'输入',i,'缓读',c,'缓写',w,'输出',o);
+  sel.onchange=()=>{wrap.style.display=sel.value==='1'?'':'none';};
+  return {el:row(label,sel,wrap),
     get:()=>sel.value!=='1'?null:{input:+i.value||0,cacheRead:+c.value||0,cacheWrite:+w.value||0,output:+o.value||0}};
 }
 
@@ -417,6 +418,8 @@ function editProvider(st,pr){
         tp=h('input',{type:'checkbox',checked:pr.tieredPricing?.enabled!==false}),
         discMode=h('select',{},h('option',{value:''},`继承站默认(${st.defaultDiscount})`),h('option',{value:'1',selected:pr.defaultDiscount!=null},'自填')),
         disc=inp(pr.defaultDiscount??'','number');
+  const discWrap=h('span',{style:pr.defaultDiscount!=null?'':'display:none'},disc);
+  discMode.onchange=()=>{discWrap.style.display=discMode.value?'':'none';};
   const scope=JSON.parse(JSON.stringify(pr.scope||{vendorIds:[],series:[],modelIds:[]}));
   const sws=JSON.parse(JSON.stringify(pr.vendorSwitches||[]));
   const models=C.allModels(state.dataset);
@@ -450,7 +453,7 @@ function editProvider(st,pr){
   renderScope();
   const mx=mixEditor('配比',pr.mix);
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
-    row('默认折扣',discMode,disc),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
+    row('默认折扣',discMode,discWrap),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
     ()=>{pr.name=name.value.trim()||pr.name;pr.enabled=en.checked;pr.tieredPricing={enabled:tp.checked};
       pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;pr.mix=mx.get();});
 }
@@ -506,7 +509,12 @@ function editModelOverride(pr,o){
   };
   renderT();
   const mx=mixEditor('配比',o.mix);
-  drawer(`编辑模型覆盖 — ${mid}`,[row('计价方式',h('label',{},'折扣',disc),h('label',{},useCustom,'自定义基础价')),
+  const discLabel=h('label',{style:o.basePrice?'display:none':''},'折扣',disc);
+  const toggleCustom=()=>{discLabel.style.display=useCustom.checked?'none':'';
+    tierBox.style.display=useCustom.checked?'':'none';};
+  useCustom.onchange=toggleCustom;
+  if(!o.basePrice)tierBox.style.display='none';
+  drawer(`编辑模型覆盖 — ${mid}`,[row('计价方式',discLabel,h('label',{},useCustom,'自定义基础价')),
     tierBox,errBox,row('分档计价',tp),mx.el],
     ()=>{
       const res={id:o.id,modelId:mid,discount:disc.value===''?null:+disc.value,tieredPricing:{enabled:tp.checked},mix:mx.get()};
