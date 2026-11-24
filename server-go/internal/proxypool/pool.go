@@ -151,11 +151,12 @@ type ProbeReport struct {
 
 // ProbeHooks 探测事件回调（均可为nil）：
 // OnNodeStart 节点开测；OnTarget/OnTargetDone 节点开始/结束抓某目标
-// （组合进度 + 在飞集合）；OnProgress 批次完成。
+// （组合进度 + 在飞集合）；OnWin 某目标被节点胜出瞬间；OnProgress 批次完成。
 type ProbeHooks struct {
 	OnNodeStart  func(label string, idx, total int)
 	OnTarget     func(nodeLabel, key string)
 	OnTargetDone func(nodeLabel, key string)
+	OnWin        func(nodeLabel, key string)
 	OnProgress   func(tested int, pending []string)
 }
 
@@ -261,6 +262,9 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 				if _, ok := pending[key]; ok && r.Status == 200 && r.Error == "" {
 					if _, won := out.Winners[key]; !won {
 						out.Winners[key] = Winner{Node: rep.node, Label: rep.Node, Body: r.Body}
+						if hooks.OnWin != nil {
+							hooks.OnWin(rep.Node, key)
+						}
 					}
 					delete(pending, key)
 				}

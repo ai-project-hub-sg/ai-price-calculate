@@ -470,6 +470,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
         if ok:
             fetched[pid] = r["body"].decode("utf-8", "replace")
             done_set.add(pid)
+            emit("direct", item=f"✓ {pid} ← 直连")
             report["providers"][pid] = {"via": "direct", "status": 200}
             log(f"[{pid}] 直连成功 {r['bytes']}B")
         else:
@@ -482,7 +483,11 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     if need_proxy:
         log(f"节点池探测 {len(need_proxy)} 个目标（上限 {max_nodes} 节点）…")
         def _onp(p: dict):
-            if "target" in p:  # 节点开抓/抓完某目标 → 在飞集合 + 组合进度
+            if p.get("won"):  # 胜出瞬间：done 立刻变绿，不等汇总
+                done_set.add(p["target"])
+                emit(p.get("phase", "probe"),
+                     item=f"✓ {p['target']} ← {p['node']}")
+            elif "target" in p:  # 节点开抓/抓完某目标 → 在飞集合 + 组合进度
                 bump(p["target"], p.get("inflight", True))
                 emit(p.get("phase", "probe"), item=f"{p['node']} → {p['target']}",
                      itemIndex=p.get("idx"), itemTotal=p.get("total"))

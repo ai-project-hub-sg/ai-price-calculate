@@ -967,39 +967,48 @@ function bindGlobal(){
       if(!r.ok)throw new Error('HTTP '+r.status);
       const {jobId}=await r.json();
       const t0=Date.now();
+      const PHASE={direct:'直连抓取',sub:'订阅拉取',warm:'缓存节点复用',probe:'节点池探测',merge:'合并写回'};
+      let lastP=null;
+      const renderProg=(p,fin,totalS,lastLog)=>{
+        let prog=box.querySelector('.prog');
+        if(!prog){prog=h('div',{class:'sub prog',
+          style:'border:1px solid #ddd;background:#fafafa;padding:4px 8px;margin:2px 0'});
+          box.prepend(prog);}
+        prog.innerHTML='';
+        const doneN=(p.done||[]).length;
+        prog.append(h('div',{style:fin?'color:#166534;font-weight:600':''},
+          (fin?`✓ 完成`:`⟳ 更新中`)+` · 总耗时 ${totalS}s`+
+          (p.targets?` · 已解决 ${doneN}/${p.targets.length}`:'')));
+        if(p.targets&&p.targets.length){ // 厂家徽章行：✓完成 ⟳在抓 …等待 ✗未成
+          const chips=h('div',{style:'display:flex;gap:4px;flex-wrap:wrap;margin:3px 0'});
+          for(const t of p.targets){
+            const d=(p.done||[]).includes(t), cur=(p.current||[]).includes(t);
+            chips.append(h('span',{style:'padding:0 6px;border-radius:3px;font-size:11px;'+
+              (cur&&!fin?'background:#2563eb;color:#fff'
+               :d?'background:#dcfce7;color:#166534'
+               :fin?'background:#fee2e2;color:#991b1b'
+               :'background:#eee;color:#666')},
+              (d?'✓ ':cur&&!fin?'⟳ ':fin?'✗ ':'… ')+t));}
+          prog.append(chips);}
+        if(!fin&&p.phase){
+          const idx=p.itemIndex?`（${p.itemIndex}/${p.itemTotal}）`:'';
+          const itemS=p.startedAt?(((Date.now()-p.startedAt)/1000)|0):0;
+          prog.append(h('div',{},
+            `▶ ${PHASE[p.phase]||p.phase}${p.item?' '+p.item:''}${idx} · 本项 ${itemS}s`));}
+        if(!fin&&lastLog)prog.append(h('div',{style:'opacity:.7'},'最近: '+lastLog));};
       const poll=setInterval(async()=>{
         try{
           const j=await(await fetch('/api/jobs/'+jobId)).json();
+          const totalS=((Date.now()-(j.startedAt||t0))/1000)|0;
           if(j.status==='running'){
             const p=j.progress||{};
-            const totalS=((Date.now()-(j.startedAt||t0))/1000)|0;
-            const PHASE={direct:'直连抓取',sub:'订阅拉取',warm:'缓存节点复用',probe:'节点池探测',merge:'合并写回'};
-            let prog=box.querySelector('.prog');
-            if(!prog){prog=h('div',{class:'sub prog',
-              style:'border:1px solid #ddd;background:#fafafa;padding:4px 8px;margin:2px 0'});
-              box.prepend(prog);}
-            prog.innerHTML='';
-            const doneN=(p.done||[]).length;
-            prog.append(h('div',{},`⟳ 更新中 · 总耗时 ${totalS}s`+
-              (p.targets?` · 已解决 ${doneN}/${p.targets.length}`:'')));
-            if(p.targets&&p.targets.length){ // 厂家徽章行：✓完成 ⟳在抓 …等待
-              const chips=h('div',{style:'display:flex;gap:4px;flex-wrap:wrap;margin:3px 0'});
-              for(const t of p.targets){
-                const d=(p.done||[]).includes(t), cur=(p.current||[]).includes(t);
-                chips.append(h('span',{style:'padding:0 6px;border-radius:3px;font-size:11px;'+
-                  (cur?'background:#2563eb;color:#fff':d?'background:#dcfce7;color:#166534':'background:#eee;color:#666')},
-                  (d?'✓ ':cur?'⟳ ':'… ')+t));}
-              prog.append(chips);}
-            if(p.phase){
-              const idx=p.itemIndex?`（${p.itemIndex}/${p.itemTotal}）`:'';
-              const itemS=p.startedAt?(((Date.now()-p.startedAt)/1000)|0):0;
-              prog.append(h('div',{},
-                `▶ ${PHASE[p.phase]||p.phase}${p.item?' '+p.item:''}${idx} · 本项 ${itemS}s`));}
-            const last=(j.log||[]).slice(-1)[0];
-            if(last)prog.append(h('div',{style:'opacity:.7'},'最近: '+last));
+            lastP=p;
+            renderProg(p,false,totalS,(j.log||[]).slice(-1)[0]);
             return;}
           clearInterval(poll);done();
-          box.querySelector('.prog')?.remove();
+          const fp=j.progress||lastP;
+          if(fp&&fp.targets)renderProg(fp,true,totalS);
+          else box.querySelector('.prog')?.remove();
           if(j.status==='done'){
             const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
             log('✓ 更新完成');

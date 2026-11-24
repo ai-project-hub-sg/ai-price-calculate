@@ -321,6 +321,8 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
 
         return start, end
 
+    cur_phase = ["warm"]  # absorb 胜出事件用的阶段标签（warm→probe 切换）
+
     def absorb(res: dict, n: Node) -> None:
         report.append(res)
         for key, r in res.get("results", {}).items():
@@ -328,6 +330,9 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                     and not r.get("error") and key not in winners):
                 winners[key] = {"node": res["node"], "node_id": n.index_id,
                                 "body": r.get("body", b"")}
+                if on_progress:  # 胜出瞬间事件：done 立刻变绿，不等汇总
+                    on_progress({"phase": cur_phase[0], "node": res["node"],
+                                 "target": key, "won": True})
             r.pop("body", None)  # report 不保留 body，胜出者已摘出
         for key in list(pending):
             if key in winners:
@@ -362,6 +367,7 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
             on_progress({"tested": len(report), "pending": list(pending)})
 
     # 冷路径：批量探测本次未试过的节点
+    cur_phase[0] = "probe"
     rest = [n for n in nodes if n.index_id not in tried]
     for i in range(0, len(rest), workers):
         if not pending:
@@ -390,8 +396,9 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
             on_progress({"tested": len(report), "pending": list(pending)})
     return {"winners": winners, "report": report, "pending": list(pending)}
 
-# on_progress 两种事件：{"phase","node","idx","total",...}=节点开测；
-# {"tested","pending"}=批次完成。调用方据此驱动日志与进度 UI。
+# on_progress 事件：{"phase","node","idx","total",...}=节点开测；
+# {"phase","node","target","inflight"}=目标开抓/抓完；{"phase","node",
+# "target","won"}=胜出瞬间；{"tested","pending"}=批次完成。
 
 
 def test_nodes(nodes: list[Node], max_nodes: int = 25, workers: int = 4,

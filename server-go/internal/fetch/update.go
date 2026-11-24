@@ -131,6 +131,7 @@ func Update(o Options) (map[string]any, error) {
 			} else {
 				fetched[pid] = body
 				doneSet[pid] = true
+				emit(Progress{Phase: "direct", Item: "✓ " + pid + " ← 直连"})
 				log(fmt.Sprintf("[%s] 直连成功 %dB", pid, r.Bytes))
 			}
 		} else {
@@ -223,6 +224,9 @@ func Update(o Options) (map[string]any, error) {
 								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
 									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
 									delete(needProxy, pid)
+									doneSet[pid] = true
+									emit(Progress{Phase: "warm",
+										Item: "✓ " + pid + " ← " + n.Label()})
 									won = true
 								}
 							}
@@ -255,6 +259,11 @@ func Update(o Options) (map[string]any, error) {
 							},
 							OnTargetDone: func(nodeLabel, key string) {
 								bump(key, -1)
+							},
+							OnWin: func(nodeLabel, key string) {
+								doneSet[key] = true // 胜出瞬间即绿，不等汇总
+								emit(Progress{Phase: "probe",
+									Item: "✓ " + key + " ← " + nodeLabel})
 							},
 							OnProgress: func(tested int, pending []string) {
 								log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
