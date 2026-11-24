@@ -82,65 +82,91 @@ ai-price-calculate/
 
 档位语义：以 `promptTokens`（未命中输入+缓存读合计）顺序命中第一个 `upToTokens===null || promptTokens<=upToTokens` 的档；整档价作用于全部 tokens（非分段累进），与官方口径一致。
 
-### 3.2 `data/config.json`（用户配置）
+### 3.2 `data/config.json`（用户配置，v2）
+
+顶层是多份**配置档案**（profile），每份独立保存一套「场景 + 汇率 + 站点树」，互不覆盖：
 
 ```jsonc
 {
-  "version": 1,
-  "exchangeRate": {
-    "mode": "auto",                    // auto | manual
-    "manualValue": 7.10,
-    "auto": { "value": null, "source": null, "fetchedAt": null }
-  },
-  "scenario": {
-    "promptTokens": 128000,
-    "mix": { "input": 0.7, "cacheRead": 0.2, "output": 0.1 },  // 存原始输入，计算时归一化
-    "offPeak": false,                  // 全局开关：对带 offPeakRatio 的模型生效
-    "tieredPricing": {                 // 分档计价总开关（账户级）；false 时所有层级分档均不生效
-      "enabled": true                  //   （但不改写子级开关状态，重开即恢复）
+  "version": 2,
+  "activeProfileId": "pf-…",
+  "profiles": [{
+    "id": "pf-…", "name": "主力测算", "notes": "",
+    "exchangeRate": { "mode": "auto", "manualValue": 7.10,
+                      "auto": { "value": null, "source": null, "fetchedAt": null } },
+    "scenario": {
+      "promptTokens": 128000,
+      "mix": { "input": 0.7, "cacheRead": 0.2, "output": 0.1 },  // 存原始输入，计算时归一化
+      "offPeak": false,
+      "presets": [{ "id": "p1", "name": "编码 3:1", "promptTokens": 128000, "mix": {...} }],
+      "activePreset": null
     },
-    "presets": [{ "id": "p1", "name": "编码 3:1", "promptTokens": 128000, "mix": {...} }],
-    "activePreset": null
-  },
-  "stations": [{
-    "id": "st-…", "name": "示例站 A", "url": "",
-    "currency": "USD",                  // 该站计费币种；决定自定义基础价与“不换汇”显示币种
-    "enabled": true, "defaultDiscount": 0.8, "notes": "",
-    "tieredPricing": { "enabled": true },     // 站级分档开关；false→该站全部模型按基础档计
-    "providerSwitches": [{                    // 厂商级分档开关（作用域=该站内该厂商）
-      "providerId": "google", "tieredPricing": { "enabled": true }
+    "tieredPricing": { "enabled": true },     // ① 账户级分档开关
+    "stations": [{
+      "id": "st-…", "name": "示例站 A", "url": "",
+      "currency": "USD",                      // 该站计费币种
+      "enabled": true, "defaultDiscount": 0.8, "notes": "",
+      "tieredPricing": { "enabled": true },   // ② 站级
+      "providers": [{                         // ≥1 个；建站自动生成与站同名的默认提供商
+        "id": "pr-…", "name": "示例站 A",     //   默认提供商：isDefault=true，改站名联动
+        "isDefault": true,                    //   站内最后一个提供商不可删除，只可禁用
+        "enabled": true, "defaultDiscount": null,   // null→继承站默认折扣
+        "tieredPricing": { "enabled": true }, // ③ 提供商级
+        "scope": {                            // 提供范围：外=不产价
+          "vendorIds": ["anthropic", "google"],   // 空数组=全部厂商
+          "series": [],                            // 空=全部系列（如 claude-opus, gpt-6.x）
+          "modelIds": []                           // 空=按上两级；非空=白名单精确指定
+        },
+        "vendorSwitches": [{                  // ④ 厂商级分档开关（该提供商内某厂商）
+          "vendorId": "google", "tieredPricing": { "enabled": true }
+        }],
+        "modelOverrides": [{                  // ⑤ 模型级（折扣/自定价/分档开关）
+          "modelId": "gpt-6.2-astra",
+          "discount": 0.6,
+          "tieredPricing": { "enabled": true },
+          "basePrice": { "tiers": [{ "upToTokens": 272000, "input": 5, "output": 25, "cacheRead": 0.25 },
+                                   { "upToTokens": null, "input": 10, "output": 37.5, "cacheRead": 0.5 }] }
+        }]
+      }]
     }],
-    "overrides": [{
-      "modelId": "gpt-6.2-astra",
-      "discount": 0.6,                  // 可选；缺省→站默认
-      "tieredPricing": { "enabled": true },   // 模型级分档开关（作用域=该站该模型）
-      "basePrice": {                    // 可选；完全自定义（含自定义分档），币种=station.currency
-        "tiers": [{ "upToTokens": 272000, "input": 5, "output": 25, "cacheRead": 0.25 },
-                  { "upToTokens": null, "input": 10, "output": 37.5, "cacheRead": 0.5 }]
-      }
-    }]
-  }],
-  "modelOverrides": [{                  // 全局官方价修正（最低优先级）
-    "modelId": "…", "basePrice": { "tiers": [...] }
-  }],
-  "display": { "precision": 4, "targetCurrency": "CNY" }
+    "modelOverrides": [{                      // 全局官方价修正（最低优先级）
+      "modelId": "…", "basePrice": { "tiers": [...] }
+    }],
+    "display": { "precision": 4, "targetCurrency": "CNY" }
+  }]
 }
 ```
 
-优先级（高→低）：`station.overrides[].basePrice` > `modelOverrides[].basePrice` > 官方 `models.json`；折扣同理（模型覆盖折扣 > 站默认 > 1）。
+优先级（高→低）：`provider.modelOverrides[].basePrice` > `profile.modelOverrides[].basePrice` > 官方 `models.json`；折扣：`provider.modelOverrides[].discount` > `provider.defaultDiscount` > `station.defaultDiscount` > 1。
 
-分档计价开关层级（账户 → 中转站 → 厂商 → 模型）：任一上级 `enabled=false` 时，该作用域及以下所有分档失效（一律按 `tiers[0]` 基础档计），但**不改写子级开关本身的状态**——上级重新开启后子级配置原样恢复。`resolveUnitPrices` 先求 `tiered = account && station && provider && model`，再决定是否按 `promptTokens` 选档。
+分档计价开关五级（账户 → 站 → 提供商 → 厂商 → 模型）：任一上级 `enabled=false` 时作用域内全部分档失效（按 `tiers[0]` 基础档计），但**不改写子级开关状态**——上级重开后原样恢复。
+
+提供商范围 `scope`：`modelIds` 非空→白名单精确命中；否则按 `vendorIds`∩`series`（均空=全量）。范围外模型在该提供商的结果列/汇总行显示「—」。
+
+层级复制（F13）：`cloneNode(profile|station|provider|modelOverride)` 深拷贝子树、重新分配所有 id、名称加「副本」后缀；档案复制额外置 `activeProfileId` 不变。
+
+模型系列（series）由 `calc.js` 按规则归类（不落库）：取 modelId 主版本前缀——`gpt-6.x`/`gpt-5.x`/`gpt-4.x`/`o系`、`claude-(fable|mythos|opus|sonnet|haiku)-X`、`gemini-N.x-(pro|flash|flash-lite)`、`grok-4.x`、`deepseek-*`、`glm-N.x*`、`kimi-kN`；正则表驱动，未匹配归「其他」。
 
 ### 3.3 计算契约（calc.js 导出）
 
 ```js
 pickTier(tiers, promptTokens) -> tier                 // 见 3.1 语义
-resolveUnitPrices(model, station?, globalOv?, promptTokens, offPeak) -> {input, output, cacheRead, discount, tierIndex, source: 'station-custom'|'station-discount'|'global-override'|'official'}
+inScope(provider.scope, model) -> bool                // modelIds 白名单 > vendorIds∩series
+classifySeries(modelId) -> string                     // 规则归类（3.2 末）
+resolveUnitPrices(model, station, provider, globalOv, scenario, profile) ->
+    {input, output, cacheRead, discount, tierIndex,
+     source: 'provider-custom'|'provider-discount'|'global-override'|'official',
+     tiered: bool}                                    // 五级开关与运算结果
 normalizeMix(mix) -> {input, cacheRead, output}       // 和=1；全 0 → 报错
 blendedPrice(unitPrices, mix) -> number               // 本币每 1M 混合 tokens
 convert(amount, fromCurrency, toCurrency, rate) -> number
 estimateRequest(unitPrices, usage, discount) -> number // F8 单次请求
-validateConfig(json) -> {ok, errors[]}                 // F10 导入校验
+cloneNode(node, kind) -> node                         // F13 深拷贝+新 id+「副本」名
+summaryRows(profiles, models, rate) -> [{             // F14 汇总页明细行
+    profileId, profileName, stationId, stationName, providerId, providerName,
+    vendorId, series, modelId, tierIndex,
+    priceNative, currency, priceConverted, targetCurrency }]
+validateConfig(json) -> {ok, errors[]}                 // F10 导入校验（含 providers≥1 约束）
 ```
 
 ## 4. API 契约（server/app.py，已实现）

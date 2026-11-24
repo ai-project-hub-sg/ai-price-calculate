@@ -18,6 +18,14 @@
 | 换汇双向 | 100 USD↔CNY, rate=7.2 | 720；CNY→USD 用除法且目标币种=来源时原样返回 |
 | 单次估算 | usage 三项 × 单项价 | 与手算一致（含 discount） |
 | tiers 校验 | 乱序/末档非 null/重复阈值 | validateConfig 报错 |
+| 提供商范围 | scope={vendorIds:[anthropic]} 对 grok 模型 | inScope=false → 该列「—」；modelIds 白名单优先 |
+| 系列归类 | gpt-6.2-astra/claude-opus-5-5/glm-5.3 | → gpt-6.x/claude-opus/glm-5.x |
+| 分档五级开关 | 账户关→全树失档；提供商关→仅该商失档 | 上级关不改子级字段；重开后状态原样恢复 |
+| 折扣链 | 模型0.6 > 提供商默认0.7 > 站默认0.8 > 1 | 逐级取最高优先 |
+| 层级复制 | cloneNode(provider) 改副本折扣 | 原提供商数据不变（深拷贝+新 id） |
+| 汇总行生成 | 2 档案×2 站×含范围外 | 行数=启用且在范围内的组合；字段齐全 |
+| 汇总排序/筛选 | 按换汇列排序 + 厂商=anthropic+系列=opus | 排序正确且仅留匹配行 |
+| 默认提供商 | 建站 → providers[0].name===站名,isDefault | 改站名联动；单独改名后不再联动 |
 
 ## 2. API 测试 `tests/api.test.js`
 
@@ -27,7 +35,10 @@
 | PUT /api/config 合法 | 200 且文件原子落盘；GET 回读一致 |
 | PUT 非法（坏类型/负价） | 400 + errors 明细，文件不被破坏 |
 | GET /api/models | 返回 providers 数组且 meta.version 存在 |
-| GET /api/exchange-rate | 无网/打桩上游：返回缓存或 stale:true；手动模式不发请求 |
+| GET /api/fx | 无网/打桩上游：返回缓存或报错；24h 内缓存命中 |
+| GET /api/nodes | 返回候选节点清单且无任何凭据字段（仅 id/name/kind/delay） |
+| POST /api/pricing/update + GET /api/jobs | 返回 jobId→轮询 done；报告含 updated/added/missingInSource |
+| PUT 校验 providers 约束 | 站点 providers=[] 或删至 0 个 | 400 报错（每站≥1 提供商） |
 | 静态服务 | `/` 返回 index.html；`/../x` 目录穿越被拒 |
 
 测试方式：`node:test` 内起临时端口实例 + fetch 打桩上游（拦截全局 fetch 或注入 fetcher）。
@@ -46,6 +57,12 @@
 | S8 | 杀后端重开页面 | 降级横幅 + localStorage 配置仍在 |
 | S9 | 导出→清配置→导入 | 完整还原；手改 JSON 破坏字段→逐条报错 |
 | S10 | file:// 双击 index.html | 可算价（自动汇率不可用→手动），降级正常 |
+| S11 | 新建站点 | 自动出现同名默认提供商 |
+| S12 | 提供商范围设为仅 anthropic | 结果表该提供商列对非 anthropic 模型显示「—」 |
+| S13 | 复制提供商改折扣 0.5 | 两列并存且数值不同，互不影响 |
+| S14 | 新建第二档案并改配比 | 两档案切换互不干扰；汇总页同时出现两组行 |
+| S15 | 汇总页：按换汇排序+筛选厂商 | 排序与过滤正确；范围外/停用节点不出现 |
+| S16 | 账户级关分档再开 | 关闭期全按基础档；重开后树内各开关原样恢复 |
 
 ## 4. 安全/边界
 

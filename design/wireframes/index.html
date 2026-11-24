@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>线框 — AI 价格归一化计算器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; font-family: system-ui, "Microsoft YaHei", monospace; }
+  body { background: #f5f5f4; color: #333; font-size: 13px; }
+  header, .scenario, .tabs, main { max-width: 1280px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: center;
+           padding: 10px 16px; background: #1c1917; color: #fafaf9; }
+  header h1 { font-size: 15px; }
+  .profiles button { margin-left: 6px; }
+  button { font: inherit; padding: 3px 10px; border: 1px solid #a8a29e; border-radius: 4px;
+           background: #fff; cursor: pointer; }
+  button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+  .scenario { display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+              padding: 8px 16px; background: #e7e5e4; border-bottom: 1px solid #d6d3d1; }
+  .scenario label { display: flex; gap: 4px; align-items: center; }
+  .scenario input[type=text], .scenario input[type=number] { width: 72px; padding: 2px 6px; }
+  .tabs { display: flex; gap: 2px; padding: 8px 16px 0; }
+  .tabs button { border-radius: 6px 6px 0 0; border-bottom: none; padding: 6px 18px; }
+  .tabs button.on { background: #fff; font-weight: 600; }
+  main { background: #fff; border: 1px solid #d6d3d1; border-top: none; min-height: 480px;
+         padding: 14px 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #e7e5e4; padding: 5px 8px; text-align: left; }
+  th { background: #fafaf9; cursor: pointer; user-select: none; }
+  td small, th small { color: #78716c; font-size: 11px; }
+  .dim { color: #a8a29e; } .hint { color: #78716c; font-size: 12px; margin: 8px 0; }
+  .tree { margin-left: 8px; }
+  .node { border: 1px solid #e7e5e4; border-radius: 6px; padding: 8px 12px; margin: 6px 0; }
+  .node.lvl2 { margin-left: 28px; background: #fafaf9; }
+  .node.lvl3 { margin-left: 56px; background: #f5f5f4; }
+  .node .ops { float: right; }
+  .chip { display: inline-block; border: 1px solid #d6d3d1; border-radius: 10px;
+          padding: 1px 8px; margin: 0 4px 4px 0; background: #fff; cursor: pointer; }
+  .chip.on { background: #dbeafe; border-color: #93c5fd; }
+  .banner { background: #fef3c7; border: 1px solid #fbbf24; padding: 6px 12px;
+            margin-bottom: 10px; border-radius: 4px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI 价格归一化计算器 <small class="dim">低保真线框 v0.2</small></h1>
+  <div class="profiles">
+    档案:
+    <select><option>主力测算</option><option>低价路线对比</option></select>
+    <button>✎重命名</button><button>⧉复制档案</button>
+    <button class="primary">＋新建</button><button>🗑</button>
+  </div>
+</header>
+<div class="scenario">
+  <label>promptTokens <input type="number" value="128000"></label>
+  <label>配比 输入<input type="text" value="70">% 缓存读<input type="text" value="20">% 输出<input type="text" value="10">%</label>
+  <label>预设 <select><option>编码 3:1</option></select></label>
+  <label><input type="checkbox"> 非高峰</label>
+  <label title="账户级">☑ 分档计价<input type="checkbox" checked hidden></label>
+  <label>汇率 <select><option>自动</option><option>手动</option></select> 7.10 <small>er-api 11-24</small> <button>⟳</button></label>
+</div>
+<div class="tabs" id="tabs">
+  <button class="on" data-t="result">结果表</button>
+  <button data-t="summary">汇总页</button>
+  <button data-t="stations">中转站管理</button>
+  <button data-t="official">官方价目</button>
+  <button data-t="estimate">单次估算</button>
+</div>
+<main>
+  <div class="banner" id="banner">⚠ 后端不可达，已降级 localStorage（示例横幅）</div>
+
+  <section id="t-result">
+    <div class="hint">厂商:[全部▾] 系列:[全部▾] 搜索[____] 状态:[active▾]　列=站/提供商；双价=本币/折算；范围外=—</div>
+    <table>
+      <tr><th>模型</th><th>官方价</th><th>示例站A/主商 ↕</th><th>示例站A/备商</th><th>便宜站B/默认</th></tr>
+      <tr><td>Claude Sonnet 5.5<br><small>档≤1M</small></td>
+          <td>$2.11<br><small>¥14.98</small></td><td>$1.69<br><small>¥11.98 · 折0.8</small></td>
+          <td class="dim">— <small>范围外</small></td><td>¥11.86<br><small>$1.67 · 折0.7</small></td></tr>
+      <tr><td>GPT-6.2 Astra<br><small>档&gt;272K</small></td>
+          <td>$8.51<br><small>¥60.42</small></td><td>$6.81<br><small>¥48.33 · 自定档✎</small></td>
+          <td>$5.96<br><small>¥42.31 · 折0.7</small></td><td class="dim">—</td></tr>
+    </table>
+  </section>
+
+  <section id="t-summary" hidden>
+    <div class="hint">
+      站[全部▾] 提供商[全部▾] 厂商[全部▾] 系列[全部▾]　共 214 行　两价格列各自可排序
+    </div>
+    <table>
+      <tr><th>配置</th><th>站</th><th>提供商</th><th>厂商</th><th>系列</th><th>模型</th><th>不换汇 ↕</th><th>换汇 ↓</th></tr>
+      <tr><td>主力测算</td><td>便宜站B</td><td>默认商</td><td>moonshot</td><td>kimi-k3</td><td>kimi-k3</td><td>¥29.50</td><td>$4.41</td></tr>
+      <tr><td>低价对比</td><td>便宜站B</td><td>默认商</td><td>deepseek</td><td>v4</td><td>v4-pro</td><td>$2.30</td><td>¥15.37</td></tr>
+      <tr><td>主力测算</td><td>示例站A</td><td>批发上游</td><td>anthropic</td><td>sonnet</td><td>5.5</td><td>$1.69</td><td>¥11.98</td></tr>
+    </table>
+  </section>
+
+  <section id="t-stations" hidden>
+    <button class="primary">＋新建站点</button>
+    <div class="tree">
+      <div class="node lvl1"><b>▼ 示例站 A</b>　USD · 默认折0.8 · ☑分档 · ☑启用
+        <span class="ops"><button>编辑</button><button>⧉复制</button><button>🗑</button></span></div>
+      <div class="node lvl2"><b>▼ 提供商: 示例站 A</b>（默认商）· 折:继承 · ☑分档 · ☑启用
+        <br><small>范围: anthropic, google / 全部系列</small>
+        <span class="ops"><button>编辑</button><button>⧉</button><button disabled>🗑</button></span></div>
+      <div class="node lvl3">覆盖: gpt-6.2-astra · 折0.6 · ☑分档
+        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
+      <div class="node lvl3">覆盖: claude-opus-5-5 · 自定价(2档)✎
+        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
+      <div class="node lvl2"><b>▶ 提供商: 批发上游</b> · 折0.65 · ☑分档 · ☐停用
+        <span class="ops"><button>编辑</button><button>⧉</button><button>🗑</button></span></div>
+      <div class="node lvl1"><b>▼ 便宜站 B</b>　CNY · 默认折0.7 · ☑分档 · ☑启用
+        <span class="ops"><button>编辑</button><button>⧉复制</button><button>🗑</button></span></div>
+    </div>
+  </section>
+
+  <section id="t-official" hidden>
+    <button class="primary">⟳ 一键更新官方价目</button>
+    <span class="hint">　上次更新 2026-11-24 ✓8源　Kimi 需人工核对⚠</span>
+    <table>
+      <tr><th>模型</th><th>厂商</th><th>输入</th><th>缓存读</th><th>输出</th><th>档位</th><th>官方更新</th><th></th></tr>
+      <tr><td>claude-haiku-5-5</td><td>anthropic</td><td>0.10→0.50</td><td>0.01→0.05</td><td>0.50→2.50</td><td>≤100K/&gt;</td><td>11-09</td><td><button>编辑官方价</button></td></tr>
+      <tr><td>grok-4.7</td><td>xai</td><td>2.00→4.00</td><td>0.50→1.00</td><td>6.00→12.00</td><td>&lt;200K/≥</td><td>11-24</td><td><button>编辑官方价</button></td></tr>
+    </table>
+  </section>
+
+  <section id="t-estimate" hidden>
+    <div class="hint">提供商▾ 模型▾ 未命中输入[_] 缓存读[_] 输出[_] → 命中档提示 + $0.034 / ¥0.24</div>
+  </section>
+</main>
+<script>
+  document.getElementById('tabs').addEventListener('click', e => {
+    if (e.target.dataset.t) {
+      document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b === e.target));
+      document.querySelectorAll('main section').forEach(s => s.hidden = s.id !== 't-' + e.target.dataset.t);
+    }
+  });
+</script>
+</body>
+</html>

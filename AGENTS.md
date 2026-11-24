@@ -13,12 +13,12 @@
 
 | 字段 | 当前值 |
 |---|---|
-| 当前阶段/状态 | 发现/需求/架构 —— **用户已批准范围调整**；后端 fetcher/nodepool 已实现并实测；A 低保真待启动 |
-| 本阶段允许修改 | `docs/`、`data/models.json`、`server/`、`design/`、根 AGENTS/README/package.json/.gitignore；`public/`、`tests/` 待线框门后创建 |
-| 审核产物与版本 | docs 五件套 + models.json（145 模型，2026-11-24 官方源全量刷新）+ server/ 抓取链 |
-| 最近明确批准 | 跳过高保真阶段；保留 calc.js；层级化分档开关；官方源抓取+节点池；剔除下线/不存在模型 |
-| 未决问题/风险 | R1 价目时效（已由 F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认 |
-| 下一阶段及进入条件 | A 低保真（`design/wireframes/` + `docs/WIREFRAMES.md`），用户已放行 |
+| 当前阶段/状态 | A 低保真 —— **产物已出，待线框审核** |
+| 本阶段允许修改 | `docs/`、`design/`、`data/models.json`、`server/`；`public/`、`tests/` 待线框门后创建 |
+| 审核产物与版本 | `docs/WIREFRAMES.md` + `design/wireframes/index.html`（v0.2：5 级树、多档案、汇总页） |
+| 最近明确批准 | 跳过高保真；calc.js 保留；五级层级（账户→站→提供商→厂商→模型）；提供商≥1 且默认与站同名；层级复制；多配置档案；汇总页排序+组合筛选 |
+| 未决问题/风险 | R1 价目时效（F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认 |
+| 下一阶段及进入条件 | C 示意 Demo（`public/calc.js`+`index.html`），需线框获批准 |
 
 不得将文件存在、自评通过或用户沉默当作批准。批准后更新本表；产物实质变更需确认原批准是否适用。
 
