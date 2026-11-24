@@ -83,6 +83,19 @@ func Update(o Options) (map[string]any, error) {
 		provs[pid] = pr
 	}
 
+	// 预解析：直连 200 但解析为空的页面（地区跳转/反爬墙页）按未抓到处理，
+	// 转节点池。解析 panic 不算"空"——留给 merge 阶段报 parse-error，不误送代理。
+	for pid, body := range fetched {
+		src := Sources[pid]
+		if src.Parse == nil || !parsesEmpty(src.Parse, body) {
+			continue
+		}
+		delete(fetched, pid)
+		needProxy[pid] = src.URL
+		provs[pid].(map[string]any)["error"] = "直连返回内容解析为空（疑似地区限制/反爬页）"
+		log(fmt.Sprintf("[%s] 直连内容解析为空，转节点池", pid))
+	}
+
 	if len(needProxy) > 0 {
 		if o.SubURL == "" {
 			log(fmt.Sprintf("%d 个源直连失败且未配置代理订阅地址，标记不可达", len(needProxy)))
@@ -98,21 +111,31 @@ func Update(o Options) (map[string]any, error) {
 			} else {
 				log(fmt.Sprintf("节点池探测 %d 个目标（订阅节点 %d 个，上限 %d）…",
 					len(needProxy), len(nodes), maxNodes))
-				probe := proxypool.FindWorking(nodes, needProxy, maxNodes, 4, 8_000,
+				// 胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也返回 200。
+				validate := func(pid string, body []byte) bool {
+					src := Sources[pid]
+					if src.Parse == nil {
+						return true
+					}
+					rows, err := safeParse(src.Parse, string(body))
+					return err == nil && len(rows) > 0
+				}
+				probe := proxypool.FindWorking(nodes, needProxy, maxNodes, 4, 8_000, validate,
 					func(tested int, pending []string) {
 						log(fmt.Sprintf("  已测 %d 节点，待解 %d", tested, len(pending)))
 					})
 				for pid, win := range probe.Winners {
-					r := proxypool.FetchThrough(win.Node, Sources[pid].URL, 15_000)
 					pr := provs[pid].(map[string]any)
 					pr["via"] = "node:" + win.Label
-					pr["status"] = r.Status
-					if r.Status == 200 && r.Bytes > minPricingBytes {
-						fetched[pid] = string(r.Body)
+					body := win.Body // 探测时已校验非空解析，直接复用
+					if len(body) == 0 {
+						r := proxypool.FetchThrough(win.Node, Sources[pid].URL, 15_000)
+						body = r.Body
+					}
+					if len(body) > minPricingBytes {
+						fetched[pid] = string(body)
 						delete(pr, "error")
-						log(fmt.Sprintf("[%s] 经节点 %s 成功 %dB", pid, win.Label, r.Bytes))
-					} else if r.Error != "" {
-						pr["error"] = r.Error
+						log(fmt.Sprintf("[%s] 经节点 %s 成功 %dB", pid, win.Label, len(body)))
 					}
 				}
 				report["unreachable"] = probe.Pending
@@ -174,6 +197,13 @@ func Update(o Options) (map[string]any, error) {
 	}
 	report["changed"] = changed
 	return report, nil
+}
+
+// parsesEmpty 判"页面虽返回 200/>500B 但解析不出任何价目行"——地区限制、
+// 反爬跳转页的典型特征。解析异常（perr!=nil）返回 false，由 merge 阶段报 parse-error。
+func parsesEmpty(fn func(string) []Row, body string) bool {
+	rows, err := safeParse(fn, body)
+	return err == nil && len(rows) == 0
 }
 
 func safeParse(fn func(string) []Row, md string) (rows []Row, err error) {

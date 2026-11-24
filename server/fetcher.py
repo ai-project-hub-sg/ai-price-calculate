@@ -405,6 +405,17 @@ def merge_provider(dataset: dict, provider_id: str, rows: list[dict]) -> dict:
 
 # ---------------------------------------------------------------- 编排
 
+def _validate_body(pid: str, body: bytes) -> bool:
+    """节点胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也是 200。"""
+    parse = SOURCES[pid]["parse"]
+    if parse is None:
+        return True
+    try:
+        return bool(parse(body.decode("utf-8", "replace")))
+    except Exception:
+        return False
+
+
 def update(providers: list[str] | None = None, max_nodes: int = 25,
            dry_run: bool = False, log=print) -> dict:
     targets = providers or list(SOURCES)
@@ -428,26 +439,44 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
                                         "error": r.get("error")}
             log(f"[{pid}] 直连失败 {r.get('error') or r['status']}，转节点池")
 
+    # 预解析：直连返回 200 但解析为空的页面（地区跳转/反爬墙页）按未抓到
+    # 处理转节点池。解析抛异常不算"空"——留给 merge 阶段报 parse-error。
+    for pid in list(fetched):
+        src = SOURCES[pid]
+        if src["parse"] is None:
+            continue
+        try:
+            empty = not src["parse"](fetched[pid])
+        except Exception:
+            empty = False
+        if empty:
+            del fetched[pid]
+            need_proxy[pid] = src["url"]
+            report["providers"][pid].update(
+                {"error": "直连返回内容解析为空（疑似地区限制/反爬页）"})
+            log(f"[{pid}] 直连内容解析为空，转节点池")
+
     if need_proxy:
         log(f"节点池探测 {len(need_proxy)} 个目标（上限 {max_nodes} 节点）…")
         probe = nodepool.find_working_proxy(
-            need_proxy, max_nodes=max_nodes,
+            need_proxy, max_nodes=max_nodes, validate=_validate_body,
             on_progress=lambda p: log(f"  已测 {p['tested']} 节点，待解 {p['pending']}"))
         for pid, win in probe["winners"].items():
-            try:
-                with nodepool.proxy_through_node(win["node_id"]) as lp:
-                    r = nodepool.fetch_url(SOURCES[pid]["url"], lp.port, timeout=15)
-                if r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY:
-                    fetched[pid] = r["body"].decode("utf-8", "replace")
-                    report["providers"][pid] = {"via": f"node:{win['node']}",
-                                                "status": 200}
-                    log(f"[{pid}] 经节点 {win['node']} 成功 {r['bytes']}B")
-                else:
-                    report["providers"][pid].update(
-                        {"via": f"node:{win['node']}", "status": r["status"],
-                         "error": r.get("error")})
-            except Exception as e:
-                report["providers"][pid].update({"error": f"{type(e).__name__}: {e}"})
+            # 探测时已校验非空解析的响应体直接复用——重抓有内容抖动风险
+            body = win.get("body") or b""
+            if not body:
+                try:
+                    with nodepool.proxy_through_node(win["node_id"]) as lp:
+                        body = nodepool.fetch_url(SOURCES[pid]["url"], lp.port,
+                                                  timeout=15)["body"] or b""
+                except Exception as e:
+                    report["providers"][pid].update({"error": f"{type(e).__name__}: {e}"})
+                    continue
+            if len(body) > MIN_USEFUL_BODY:
+                fetched[pid] = body.decode("utf-8", "replace")
+                report["providers"][pid] = {"via": f"node:{win['node']}",
+                                            "status": 200}
+                log(f"[{pid}] 经节点 {win['node']} 成功 {len(body)}B")
         report["unreachable"] = probe["pending"]
 
     changed = {}

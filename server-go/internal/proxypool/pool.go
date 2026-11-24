@@ -149,8 +149,11 @@ type ProbeReport struct {
 	node    Node              // 对应的 Node 对象（不进 JSON）
 }
 
-// ProbeNode 单节点探测一组 URL。
-func ProbeNode(n Node, urls map[string]string, timeoutMS int) ProbeReport {
+// ProbeNode 单节点探测一组 URL。validate 非nil时对 200 响应做内容校验
+// （如"能解析出价目行"），校验不过记 error 不当可用——地区限制/反爬页
+// 也是 200，只看状态码会误判节点可用。
+func ProbeNode(n Node, urls map[string]string, timeoutMS int,
+	validate func(key string, body []byte) bool) ProbeReport {
 	out := ProbeReport{Node: n.Label(), Kind: n.Kind, node: n, Results: map[string]Result{}}
 	lb, err := StartNode(n)
 	if err != nil {
@@ -160,8 +163,10 @@ func ProbeNode(n Node, urls map[string]string, timeoutMS int) ProbeReport {
 	defer lb.Close()
 	for key, u := range urls {
 		r := FetchURL(u, lb.Port, timeoutMS)
-		r.Body = nil // 探测只关心可达性
-		out.Results[key] = r
+		if validate != nil && r.Status == 200 && !validate(key, r.Body) {
+			r.Error = "返回内容校验未通过（疑似反爬/地区限制页）"
+		}
+		out.Results[key] = r // body 保留：胜出者的已校验内容直接复用，不再重抓
 	}
 	return out
 }
@@ -179,6 +184,7 @@ func FetchThrough(n Node, rawURL string, timeoutMS int) Result {
 type Winner struct {
 	Node  Node
 	Label string
+	Body  []byte // 探测时已校验的响应体，调用方直接复用（重抓有内容抖动风险）
 }
 
 type ProbeResult struct {
@@ -189,6 +195,7 @@ type ProbeResult struct {
 
 // FindWorking 按候选顺序探测节点，为每个目标 URL 找首个可用节点（4 并发批）。
 func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int, timeoutMS int,
+	validate func(key string, body []byte) bool,
 	onProgress func(tested int, pending []string)) ProbeResult {
 	if maxNodes > 0 && len(nodes) > maxNodes {
 		nodes = nodes[:maxNodes]
@@ -223,16 +230,16 @@ func FindWorking(nodes []Node, urls map[string]string, maxNodes int, workers int
 							Error: fmt.Sprintf("panic: %v", r), Results: map[string]Result{}}
 					}
 				}()
-				reps[j] = ProbeNode(n, targets, timeoutMS)
+				reps[j] = ProbeNode(n, targets, timeoutMS, validate)
 			}(j, n)
 		}
 		wg.Wait()
 		for _, rep := range reps {
 			out.Reports = append(out.Reports, rep)
 			for key, r := range rep.Results {
-				if _, ok := pending[key]; ok && r.Status == 200 {
+				if _, ok := pending[key]; ok && r.Status == 200 && r.Error == "" {
 					if _, won := out.Winners[key]; !won {
-						out.Winners[key] = Winner{Node: rep.node, Label: rep.Node}
+						out.Winners[key] = Winner{Node: rep.node, Label: rep.Node, Body: r.Body}
 					}
 					delete(pending, key)
 				}
@@ -289,7 +296,7 @@ func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeout
 			wg.Add(1)
 			go func(j int, n Node) {
 				defer wg.Done()
-				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS)
+				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS, nil)
 				r := NodeTestResult{ID: n.ID, Name: n.Label(), Kind: n.Kind}
 				if rep.Error != "" {
 					r.Error = rep.Error

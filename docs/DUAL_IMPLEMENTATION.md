@@ -27,7 +27,7 @@
 3. **合并语义**：updated/added/skippedRetired/missingInSource 四列表含义与空值形状（`[]` 不是 `null`）；`retired` 不入库；新增行补 `status=active`/`fetchedAt`/`officialUpdatedAt=null`/`notes=自动更新新增，请人工核对`；`checkedAt` 必写。
 4. **models.json 写回**：缩进 2 空格、UTF-8 原文不转义、数字十进制无科学计数法、保留文件换行风格、**未动数据零 diff**。
 5. **config.json**：不存在→默认（API 契约）；损坏→500；PUT 原子写、服务端不做 schema 校验（前端 validateConfig 负责）。
-6. **回退链**：直连 → 节点池（有配置时）→ 报错；`bytes > MIN_USEFUL_BODY(500)` 才视为抓到；订阅/直连均不走环境变量代理。
+6. **回退链**：直连 → 节点池（有配置时）→ 报错；`bytes > MIN_USEFUL_BODY(500)` 且**该源解析器能解出非空行**才视为抓到（直连与节点胜出同标准）；胜出者复用探测时校验过的响应体，不二次抓取；订阅/直连均不走环境变量代理。
 7. **fetch URL 集合**：`SOURCES`/`Sources` 的 8 个 URL、顺序（report/unreachable 排序稳定性）、moonshot 无解析器→manual-check。
 
 ## 3. 已知坑（踩过的，防再踩）
@@ -42,6 +42,7 @@
 | 键序漂移 | Python dict 保序 vs Go map 乱序 | raw 直通 + dirty 子树 canonical；见 ARCHITECTURE §10.4 |
 | 换行翻转 | Python `open("w")` 按 OS 写 CRLF/LF | `Dataset.eol` 检测并保留输入换行风格 |
 | fixture 过期 | .md 样本是某时刻快照 | 源页改版→更新 fixture + 重跑 gen_fixtures.py；真实源结构变了≠测试错 |
+| 200 墙页当成功 | 地区限制/反爬页也是 200+大字节（实测 anthropic 311KB blocked 页） | 直连与节点胜出都做「解析非空」校验；节点胜出复用探测 body（重抓有 CDN 抖动窗口） |
 
 ## 4. 测试基准的再生工作流
 

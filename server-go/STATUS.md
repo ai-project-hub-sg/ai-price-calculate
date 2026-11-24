@@ -33,7 +33,11 @@ Windows 下 `go build -o aipc-server.exe` 覆盖**正在运行的** exe 时，�
 
 `models.json` 缺失时 `/api/models` 返回 `{}` → `state.dataset.providers` undefined → `is not iterable` 全页面崩。修：boot 校验 `providers` 是数组才采用，否则回退内置样本 + banner 明示「models.json 缺失/为空」。注意 exe 默认 `--data <exe>/data` 与仓库 `data/` 是两处——开发测试传 `--data ../data`。
 
-### 5. 前端轮询报「not found」（未定论）
+### 5. 「200+大字节=抓到」被墙页骗过（双边逻辑洞，已修）
+
+anthropic 直连 307→`app-unavailable-in-region` 311271B 落地页：200、>500B、解析 0 行，旧逻辑记 `parse-empty` 不重试。三连修：①直连后预解析，空→转节点池；②节点胜出校验加「该源解析器解出非空行」——探测时 blocked 页不再算赢（实测前 15 节点全 blocked 全拒，第 16 个日本出口拿到 40637B 真页→合并 18 模型）；③胜出者复用探测时校验过的 body——**重抓有 TOCTOU 抖动**（探测真页/重抓墙页实测发生）。Python 侧 `nodepool.find_working_proxy(validate=)` + `fetcher._validate_body` 同步，顺带省掉 `proxy_through_node` 子进程重启。根因教训：**「内容有效」要用领域校验（解析器），不要用传输层信号（status/字节数）推断。**
+
+### 6. 前端轮询报「not found」（未定论）
 
 用户实测价目更新：直连阶段日志正常，随后报 `✗ 失败: not found`。排查结论：`j.status` 非 running/done 且 `j.error='not found'` = 轮询拿到 `/api/jobs/<id>` 的 404。本地复现同一订阅同一 job → `status:done` 正常完成，未复现。已加 API 请求日志（`/api/*` → stderr 打 `方法 路径 → 状态码`），**若再现先看服务端 stdout 轨迹**（是否请求落到不含该 job 的实例/是否请求路径异常）。怀疑方向：瞬时因素（实例重启竞态/浏览器预览代理），无代码级证据前不改逻辑。
 

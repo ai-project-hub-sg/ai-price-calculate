@@ -221,16 +221,24 @@ class _LocalProxy:
                 pass
 
 
-def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0) -> dict:
-    """单节点探测一组 URL，返回 {label, kind, results: {key: {...}}}。"""
+def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0,
+               validate=None) -> dict:
+    """单节点探测一组 URL，返回 {label, kind, results: {key: {...}}}。
+
+    validate(key, body)->bool 非 None 时对 200 响应做内容校验（如"能解析出
+    价目行"），校验不过记 error 不当可用——地区限制/反爬页也是 200，只看
+    状态码会误判节点可用。
+    """
     out = {"node": node.label, "kind": node.kind, "results": {}}
     try:
         with _LocalProxy(node) as lp:
             out["proxy"] = f"http://127.0.0.1:{lp.port}"
             for key, url in urls.items():
                 r = fetch_url(url, lp.port, timeout=timeout)
-                r.pop("body", None)
-                out["results"][key] = r
+                if (validate and r.get("status") == 200
+                        and not validate(key, r.get("body") or b"")):
+                    r["error"] = "返回内容校验未通过（疑似反爬/地区限制页）"
+                out["results"][key] = r  # body 保留：胜出者的已校验内容直接复用
     except Exception as e:
         out["error"] = f"{type(e).__name__}: {e}"
     return out
@@ -238,7 +246,7 @@ def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0) -> dict:
 
 def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                        workers: int = 4, timeout: float = 8.0,
-                       db_path: str = DB_PATH,
+                       db_path: str = DB_PATH, validate=None,
                        on_progress=None) -> dict:
     """按候选顺序探测节点，为每个目标 URL 找首个可用节点。
 
@@ -255,7 +263,8 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
             break
         batch = nodes[i:i + workers]
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(probe_node, n, pending, timeout): n for n in batch}
+            futs = {ex.submit(probe_node, n, pending, timeout, validate): n
+                    for n in batch}
             for fut in as_completed(futs):
                 n = futs[fut]
                 try:
@@ -264,8 +273,11 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
                     res = {"node": n.label, "error": str(e), "results": {}}
                 report.append(res)
                 for key, r in res.get("results", {}).items():
-                    if key in pending and r.get("status") == 200 and key not in winners:
-                        winners[key] = {"node": res["node"], "node_id": n.index_id}
+                    if (key in pending and r.get("status") == 200
+                            and not r.get("error") and key not in winners):
+                        winners[key] = {"node": res["node"], "node_id": n.index_id,
+                                        "body": r.get("body", b"")}
+                    r.pop("body", None)  # report 不保留 body，胜出者已摘出
         for key in list(pending):
             if key in winners:
                 pending.pop(key)
