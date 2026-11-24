@@ -279,7 +279,8 @@ Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会�
 ### 10.6 部署形态（Linux VPS + nginx）
 
 ```
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
+# -tags 必需：sing-box 的 uTLS(Reality)/QUIC(Hysteria2) 由 build tag 控制，缺失则全部节点出站初始化失败
 # 附带 data/（models.json 必须；config.json 可选）
 systemd: ExecStart=/opt/aipc/aipc-server --host 127.0.0.1 --port 8787
 nginx:   location / { proxy_pass http://127.0.0.1:8787; }

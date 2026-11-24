@@ -248,3 +248,63 @@ func sortedKeys(m map[string]string) []string {
 	sort.Strings(ks)
 	return ks
 }
+
+// NodeTestResult 「测试节点」端点结果：连通性探测（不取价目，只判能不能用）。
+type NodeTestResult struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`
+	OK    bool   `json:"ok"`
+	Ms    int    `json:"ms"`
+	Error string `json:"error,omitempty"`
+}
+
+// TestNodes 对全部节点（至多 maxNodes 个）做连通性探测：每个节点起本地
+// sing-box 端口拉一次 probeURL，2xx 即判可用。与 FindWorking 不同——不为
+// 特定目标找首个胜者，而是完整测一遍给出可用率，供「测试节点」按钮展示。
+// 显式说明：探测目标固定为 probeURL（连通性），不代表一定能到某个价目页。
+func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeoutMS int,
+	onProgress func(tested, total int)) []NodeTestResult {
+	probed := nodes
+	if maxNodes > 0 && len(probed) > maxNodes {
+		probed = probed[:maxNodes]
+	}
+	if workers <= 0 {
+		workers = 4
+	}
+	results := make([]NodeTestResult, len(probed))
+	for i := 0; i < len(probed); i += workers {
+		end := i + workers
+		if end > len(probed) {
+			end = len(probed)
+		}
+		var wg sync.WaitGroup
+		for j := i; j < end; j++ {
+			wg.Add(1)
+			go func(j int, n Node) {
+				defer wg.Done()
+				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS)
+				r := NodeTestResult{ID: n.ID, Name: n.Label(), Kind: n.Kind}
+				if rep.Error != "" {
+					r.Error = rep.Error
+				} else if res, ok := rep.Results["_"]; ok {
+					r.Ms = res.Ms
+					if res.Status >= 200 && res.Status < 300 {
+						r.OK = true
+					} else {
+						r.Error = res.Error
+						if r.Error == "" {
+							r.Error = fmt.Sprintf("HTTP %d", res.Status)
+						}
+					}
+				}
+				results[j] = r
+			}(j, probed[j])
+		}
+		wg.Wait()
+		if onProgress != nil {
+			onProgress(end, len(probed))
+		}
+	}
+	return results
+}

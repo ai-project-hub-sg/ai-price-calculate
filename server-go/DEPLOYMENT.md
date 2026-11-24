@@ -7,8 +7,9 @@
 ```bash
 cd server-go
 go run ./tools/syncassets                                   # 前端 → embed
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 file aipc-server   # 应显示 static / not stripped 均可，关键是不依赖 libc
+# -tags 不可省：with_utls=Reality、with_quic=Hysteria2 必需的 sing-box 编译特性
 ```
 
 `CGO_ENABLED=0` 是硬要求（sing-box 纯 Go，无 C 依赖，静态产物随便搬发行版）。
@@ -93,6 +94,7 @@ HTTPS 照常 certbot。`--host 127.0.0.1` 保证只有本机 nginx 能连——*
 | 价目更新全 unreachable | VPS 在墙内且未填订阅 → 「官方价目」页填订阅；订阅地址本身需直连可达 |
 | job 报「订阅拉取失败」 | `curl <订阅地址>` 在 VPS 上测连通性；看 job 日志的解码方式行 |
 | 某源一直直连失败 | 该源墙外不可达属预期——确认订阅已配置，看日志是否进了节点池探测 |
+| 节点测试全灭/报 `not included in this build` | 二进制漏了 `-tags "with_utls with_quic"` 重新编译 |
 | 启动即退 | `journalctl -u aipc`；常见：`data/` 缺 models.json、端口被占 |
 
 ## 7. 升级

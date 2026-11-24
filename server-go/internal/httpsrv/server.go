@@ -38,6 +38,16 @@ var defaultConfig = map[string]any{
 	"stations":      []any{},
 }
 
+type statusWriter struct {
+	http.ResponseWriter
+	code int
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	w.code = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 type job struct {
 	Status string   `json:"status"`
 	Report any      `json:"report"`
@@ -84,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/config", s.hPutConfig)
 	mux.HandleFunc("GET /api/fx", s.hFx)
 	mux.HandleFunc("GET /api/nodes", s.hNodes)
+	mux.HandleFunc("POST /api/nodes/test", s.hNodesTest)
 	mux.HandleFunc("POST /api/pricing/update", s.hUpdate)
 	mux.HandleFunc("GET /api/jobs/", s.hJob)
 	mux.HandleFunc("OPTIONS /", s.hOptions)
@@ -91,6 +102,13 @@ func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			// 访问日志（仅 API）：定位"job 消失/打错实例"类问题
+			sw := &statusWriter{ResponseWriter: w, code: 200}
+			mux.ServeHTTP(sw, r)
+			fmt.Fprintf(os.Stderr, "%s %s → %d\n", r.Method, r.URL.Path, sw.code)
+			return
+		}
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -248,6 +266,92 @@ func (s *Server) hNodes(w http.ResponseWriter, r *http.Request) {
 		list = append(list, map[string]any{"id": n.ID, "name": n.Name, "kind": n.Kind, "delay": -1})
 	}
 	writeJSON(w, 200, map[string]any{"total": len(list), "nodes": list})
+}
+
+// probeURL 「测试节点」的连通性探测目标：判节点能否出外网，非价目抓取。
+const probeURL = "https://www.gstatic.com/generate_204"
+
+// hNodesTest 启动节点测试 job：body {"url"?}（空=用 config.proxySubscription）。
+// 拉订阅→逐节点连通性探测→report {total, probed, usable, results[]}。
+// 走 job 模型与价目更新同一套轮询机制（探测几十节点要分钟级）。
+func (s *Server) hNodesTest(w http.ResponseWriter, r *http.Request) {
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && r.ContentLength != 0 {
+		writeJSON(w, 400, map[string]any{"error": "请求体 JSON 解析失败: " + err.Error()})
+		return
+	}
+	sub, _ := body["url"].(string)
+	sub = strings.TrimSpace(sub)
+	if sub == "" {
+		var err error
+		if sub, err = s.subURL(); err != nil {
+			writeJSON(w, 500, map[string]any{"error": "config 读取失败: " + err.Error()})
+			return
+		}
+	}
+	if sub == "" {
+		writeJSON(w, 400, map[string]any{"error": "未提供订阅地址（body.url 或 config.proxySubscription 均为空）"})
+		return
+	}
+	maxNodes := 25
+	if v, ok := body["maxNodes"].(float64); ok && v > 0 {
+		maxNodes = int(v)
+	}
+	id := randID()
+	j := &job{Status: "running"}
+	s.mu.Lock()
+	s.jobs[id] = j
+	s.mu.Unlock()
+	go s.runNodesTest(id, sub, maxNodes)
+	writeJSON(w, 200, map[string]any{"jobId": id})
+}
+
+func (s *Server) runNodesTest(id, sub string, maxNodes int) {
+	logf := func(m string) {
+		s.mu.Lock()
+		j := s.jobs[id]
+		j.Log = append(j.Log, m)
+		if len(j.Log) > jobKeep {
+			j.Log = j.Log[len(j.Log)-jobKeep:]
+		}
+		s.mu.Unlock()
+	}
+	finish := func(status string, rep any, err error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		j := s.jobs[id]
+		j.Status = status
+		if err != nil {
+			j.Error = err.Error()
+		} else {
+			j.Report = rep
+		}
+	}
+	nodes, err := proxypool.LoadSubscription(sub, logf)
+	if err != nil {
+		finish("error", nil, err)
+		return
+	}
+	probed := maxNodes
+	if len(nodes) < probed {
+		probed = len(nodes)
+	}
+	logf(fmt.Sprintf("探测前 %d/%d 节点（连通性目标 %s）…", probed, len(nodes), probeURL))
+	results := proxypool.TestNodes(nodes, probeURL, maxNodes, 4, 10_000,
+		func(tested, total int) {
+			logf(fmt.Sprintf("  已测 %d/%d", tested, total))
+		})
+	usable := 0
+	for _, r := range results {
+		if r.OK {
+			usable++
+		}
+	}
+	logf(fmt.Sprintf("完成：%d/%d 节点可用", usable, len(results)))
+	finish("done", map[string]any{
+		"total": len(nodes), "probed": len(results),
+		"usable": usable, "results": results,
+	}, nil)
 }
 
 func (s *Server) hUpdate(w http.ResponseWriter, r *http.Request) {

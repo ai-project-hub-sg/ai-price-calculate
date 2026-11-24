@@ -107,7 +107,10 @@
     <div class="toolbar">
       <button class="primary" id="updBtn">⟳ 一键更新官方价目</button>
       <label class="hint">代理订阅 <input type="text" id="subUrl" placeholder="留空=仅直连"
-        style="width:220px" title="vless+reality / hysteria2 节点订阅地址；价目源直连失败时经节点池重试，需后端支持"></label>
+        style="width:260px" title="vless+reality / hysteria2 节点订阅地址；价目源直连失败时经节点池重试，需后端支持"></label>
+      <button id="subSave" title="写入 config.proxySubscription">保存</button>
+      <button id="subTest" title="拉取订阅并逐节点做连通性探测（不抓取价目）">测试节点</button>
+      <span class="hint" id="subMsg"></span>
       <span class="hint" id="updInfo"></span>
       <input type="text" id="offSearch" placeholder="搜索模型" style="margin-left:auto">
     </div>
@@ -888,7 +891,59 @@ function bindGlobal(){
   $('#stNew').onclick=()=>{const n=prompt('站点名');if(!n)return;profile().stations.push(C.newStation(n));render();};
   $('#offSearch').oninput=renderOfficial;
   $('#subUrl').value=state.config.proxySubscription||'';
-  $('#subUrl').onchange=e=>{state.config.proxySubscription=e.target.value.trim();persist();};
+  const subMsg=(t,cls)=>{const m=$('#subMsg');m.textContent=t;
+    m.style.color=cls==='danger'?'#b91c1c':cls==='ok'?'#15803d':'#6b7280';};
+  $('#subUrl').oninput=()=>subMsg(
+    $('#subUrl').value.trim()===(state.config.proxySubscription||'')?'':'未保存');
+  $('#subSave').onclick=async()=>{
+    if(!state.backend)return subMsg('后端不可达','danger');
+    const v=$('#subUrl').value.trim();
+    try{
+      const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...state.config,proxySubscription:v})});
+      const j=await r.json();
+      if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+      state.config.proxySubscription=v;persist();
+      subMsg('已保存 ✓','ok');
+      setTimeout(()=>{if($('#subMsg').textContent==='已保存 ✓')subMsg('');},3000);
+    }catch(e){subMsg('保存失败: '+e.message,'danger');}
+  };
+  $('#subTest').onclick=async()=>{
+    const btn=$('#subTest'),box=$('#updStatus');
+    const url=$('#subUrl').value.trim();
+    if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
+      '⚠ 后端不可达（/api/models 请求失败）'));return;}
+    if(!url){subMsg('请先填订阅地址','danger');return;}
+    const oldTxt=btn.textContent;
+    btn.disabled=true;btn.textContent='测试中…';box.innerHTML='';
+    const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
+    log('已提交节点测试，等待后端返回…');
+    const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
+    try{
+      const r=await fetch('/api/nodes/test',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({url})});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const {jobId}=await r.json();
+      const t0=Date.now();
+      const poll=setInterval(async()=>{
+        try{
+          const j=await(await fetch('/api/jobs/'+jobId)).json();
+          if(j.status==='running'){const last=(j.log||[]).slice(-1)[0];
+            box.lastChild&&box.lastChild.textContent.startsWith('运行中')?box.lastChild.remove():0;
+            log(`运行中… ${((Date.now()-t0)/1000).toFixed(0)}s`+(last?` · ${last}`:''));return;}
+          clearInterval(poll);done();
+          if(j.status==='done'&&j.report){
+            const p=j.report;
+            log(`✓ 共 ${p.total} 节点 · 已探测 ${p.probed} · 可用 ${p.usable}`,
+              p.usable?'':'danger');
+            for(const n of (p.results||[]))
+              log(`　${n.ok?'✓':'✗'} ${n.name}（${n.kind}）${n.ok?' '+n.ms+'ms':' '+(n.error||'')}`,
+                n.ok?'':'danger');
+          }else log('✗ 测试失败: '+(j.error||'未知'),'danger');
+        }catch(e){/* 轮询失败下一轮再试 */}
+      },1500);
+    }catch(e){done();log('✗ 请求失败: '+e.message);}
+  };
   $('#updBtn').onclick=async()=>{
     const btn=$('#updBtn'),box=$('#updStatus');
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
@@ -897,6 +952,8 @@ function bindGlobal(){
     btn.disabled=true;btn.textContent='⟳ 更新中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
     log('已提交更新任务，等待后端返回…');
+    if($('#subUrl').value.trim()!==(state.config.proxySubscription||''))
+      log('⚠ 订阅地址已修改未保存，本次按已保存配置执行','danger');
     const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
     try{
       const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});

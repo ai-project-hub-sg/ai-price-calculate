@@ -13,9 +13,13 @@ AI 价格归一化计算器的**单二进制后端**：与 Python 版（`../serv
 # Windows / Linux / macOS 通用（需要 Go ≥ 1.24）
 cd server-go
 go run ./tools/syncassets   # 把 ../public 同步进 assets/（embed 前置步骤）
-go build -o aipc-server ./cmd/server
+go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 ./aipc-server               # → http://127.0.0.1:8787
 ```
+
+> **`-tags "with_utls with_quic"` 不可省**：sing-box 的 uTLS（Reality 必需）
+> 与 QUIC（Hysteria2 必需）由 build tag 控制，缺省编译进库但出站初始化即报
+> `uTLS/QUIC is not included in this build`——所有代理节点会全部探测失败。
 
 打开 `http://127.0.0.1:8787/`。数据文件默认读写 **可执行文件同目录下的 `data/`**（`models.json` 必须放入，`config.json`/`fx-cache.json` 运行时自动生成）。
 
@@ -62,7 +66,7 @@ python server-go/tools/gen_fixtures.py   # 固定 TODAY，确定性输出
 ```bash
 cd server-go
 go run ./tools/syncassets
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o aipc-server ./cmd/server
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 ```
 
 产物 ~49MB（内嵌 sing-box）。部署步骤见 `DEPLOYMENT.md`（systemd + nginx）。
