@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.24 · 3ce0231</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.25 · a70397b</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -272,9 +272,11 @@ function renderResult(){
   }
   const search=h('input',{type:'text',placeholder:'搜索模型',value:f.q||''});
   search.oninput=()=>{f.q=search.value;renderResult();};bar.append(search);
+  bar.append(h('button',{title:'官方基准列：原币=按官方币种显示；¥=折算人民币',
+    onclick:()=>{state.offCny=!state.offCny;renderResult();}},'官价：'+(state.offCny?'¥':'原币')));
   const shown=rows.filter(r=>pass(r));
   $('#rowCount').textContent=`共 ${shown.length} 行（全部档案合计 ${rows.length}）`;
-  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['mixLabel','配比(入|读|写|出)'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny','官方(¥)']];
+  const cols=[['profileName','配置'],['stationName','站'],['providerName','提供商'],['vendorName','厂商'],['series','系列'],['modelId','模型'],['tierLabel','档位'],['discount','折扣'],['mixLabel','配比(入|读|写|出)'],['priceNative','不换汇'],['priceCny','换汇(¥)'],['officialCny',state.offCny?'官方(¥)':'官方(原币)']];
   const t=$('#resultTable');t.innerHTML='';
   if(!shown.length){t.append(h('tr',{},h('td',{class:'dim',colspan:cols.length},'无结果——建个站点或放宽筛选')));return;}
   const tr=h('tr',{});
@@ -293,7 +295,9 @@ function renderResult(){
       h('td',{},r.profileName),h('td',{},r.stationName),h('td',{},r.providerName),
       h('td',{},r.vendorName),h('td',{},r.series),h('td',{},r.modelId),
       h('td',{},r.tierLabel),h('td',{class:srcCls},String(r.discount)),
-      h('td',{},fmt(r.priceNative,r.currency)),h('td',{},fmtC(r.priceCny)),h('td',{class:'dim'},fmtC(r.officialCny))));
+      h('td',{class:'dim'},r.mixLabel||''),
+      h('td',{},fmt(r.priceNative,r.currency)),h('td',{},fmtC(r.priceCny)),
+      h('td',{class:'dim'},state.offCny?fmtC(r.officialCny):fmt(r.officialNative,r.currency))));
   }
 }
 

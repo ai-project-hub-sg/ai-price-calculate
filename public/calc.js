@@ -260,7 +260,7 @@ function summaryRows(profiles, dataset, rate) {
           const rowMix = resolveMix(pf, st, pr, mOv, entry);
           const cur = entry.vendor.currency || "USD";
           const native = blendedPrice(u, rowMix);
-          // 官方基准价（无折扣、官方 tier、同档位、同配比）
+          // 官方基准价（无折扣、官方 tier、同档位、同配比；原币）
           const off = officialPrice(entry, pf, rate, rowMix);
           rows.push({
             profileId: pf.id, profileName: pf.name,
@@ -279,7 +279,8 @@ function summaryRows(profiles, dataset, rate) {
             discount: u.discount, source: u.source, tiered: u.tiered,
             priceNative: native, currency: cur,
             priceCny: convert(native, cur, rate),
-            officialCny: off,
+            officialNative: off,
+            officialCny: convert(off, cur, rate),
             mixLabel: [rowMix.input, rowMix.cacheRead, rowMix.cacheWrite, rowMix.output]
               .map(x => +x || 0).join("|"),
           });
@@ -297,7 +298,7 @@ function officialPrice(entry, profile, rate, mix) {
   const cr = t.cacheRead != null ? t.cacheRead : t.input;
   const cw = cacheWritePrice(t, "5m", t.input);
   const p = t.input * m.input + cr * m.cacheRead + cw * m.cacheWrite + t.output * m.output;
-  return convert(p, entry.vendor.currency || "USD", rate);
+  return p;   // 原币价；需要 CNY 时由调用方 convert
 }
 
 // ---------- 单次估算 ----------
