@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.29 · c9b63b6</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.30 · bef0561</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -314,6 +314,7 @@ function renderStations(){
       const scope=pr.scope?.modelIds?.length?`${vs} +散选模型${pr.scope.modelIds.length}`:vs;
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
+        pr.vendorDiscounts?.length?`厂商折${pr.vendorDiscounts.length}项 `:'',
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
         [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>pickModels('新增模型覆盖',ids=>{
           ids.forEach(id=>{if(pr.modelOverrides.some(x=>x.modelId===id))return;
@@ -580,10 +581,45 @@ function editProvider(st,pr){
   const scEd=scopeEditor(scope,renderVS,st.scope);
   const vBox=h('div',{class:'box'},h('b',{},'提供范围（范围外不产价；可选项已按站点范围裁剪）'),scEd.el);
   const mx=mixEditor('配比',pr.mix);
+  const vd=JSON.parse(JSON.stringify(pr.vendorDiscounts||[]));
+  const mdisc=(pr.modelOverrides||[]).filter(o=>o.discount!=null).map(o=>({modelId:o.modelId,discount:o.discount}));
+  const vdBox=h('div',{class:'box'});
+  const renderVD=()=>{
+    vdBox.innerHTML='';
+    vdBox.append(h('b',{},'厂商级折扣'),h('small',{class:'dim'},' 空=走默认折扣链；可>1（溢价），优先生效于商/站默认'));
+    for(const v of state.dataset.providers){
+      const cur=vd.find(x=>x.vendorId===v.id);
+      const i=inp(cur?.discount??'','number');i.placeholder='默认';i.style.width='70px';
+      i.onchange=()=>{const val=i.value===''?null:+i.value;
+        const c=vd.find(x=>x.vendorId===v.id);
+        if(val==null){if(c)vd.splice(vd.indexOf(c),1);}
+        else if(c)c.discount=val;else vd.push({vendorId:v.id,discount:val});};
+      vdBox.append(h('label',{style:'margin-right:12px'},`${v.id} `,i));
+    }
+    vdBox.append(h('div',{style:'margin-top:6px'},h('b',{},'模型例外折扣'),' ',
+      h('button',{onclick:()=>pickModels('选择模型',ids=>{
+        ids.forEach(id=>{if(!mdisc.find(x=>x.modelId===id))mdisc.push({modelId:id,discount:''});});renderVD();})},'＋选择模型'),
+      h('small',{class:'dim'},' 单独定价倍率（如高占用模型×10）；保存时写入该模型覆盖的折扣')));
+    mdisc.forEach((m,i)=>{
+      const mi=inp(m.discount??'','number');mi.style.width='70px';mi.placeholder='如10';
+      mi.onchange=()=>{m.discount=mi.value===''?null:+mi.value;};
+      vdBox.append(h('label',{style:'margin-right:12px'},m.modelId+' ',mi,
+        h('span',{class:'chip',title:'移出例外（折扣回到上级链）',onclick:()=>{mdisc.splice(i,1);renderVD();}},'×')));
+    });
+  };
+  renderVD();
   drawer('编辑提供商',[row('名称',name),row('启用/分档',en,'启用',tp,'分档计价'),
-    row('默认折扣',discMode,discWrap),mx.el,vBox,vs,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
+    row('默认折扣',discMode,discWrap),mx.el,vBox,vs,vdBox,h('div',{class:'hint'},'模型覆盖请在树节点上「＋覆盖」添加')],
     ()=>{pr.name=name.value.trim()||pr.name;pr.enabled=en.checked;pr.tieredPricing={enabled:tp.checked};
-      pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;pr.mix=mx.get();});
+      pr.defaultDiscount=discMode.value?+disc.value:null;pr.scope=scope;pr.vendorSwitches=sws;pr.mix=mx.get();
+      pr.vendorDiscounts=vd;
+      const ovs=pr.modelOverrides||(pr.modelOverrides=[]);
+      for(const m of mdisc){
+        const ov=ovs.find(o=>o.modelId===m.modelId);
+        if(ov)ov.discount=m.discount;
+        else ovs.push({id:'ov-'+Date.now().toString(36),modelId:m.modelId,discount:m.discount,tieredPricing:{enabled:true}});
+      }
+      for(const ov of ovs)if(ov.discount!=null&&!mdisc.find(m=>m.modelId===ov.modelId))ov.discount=null;});
 }
 
 function editModelOverride(pr,o){

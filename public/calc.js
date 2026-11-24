@@ -136,8 +136,10 @@ function resolveUnitPrices(entry, ctx) {
   const ti = tiered ? pickTierIndex(tiers, promptTokens) : 0;
   const tier = tiers[ti];
 
-  // 折扣链：模型覆盖 > 提供商默认 > 站默认 > 1
+  // 折扣链：模型覆盖 > 提供商厂商级 > 提供商默认 > 站默认 > 1
+  const vDisc = (provider.vendorDiscounts || []).find(v => v.vendorId === vendor.id);
   const discount = (mOv && mOv.discount != null ? mOv.discount
+    : vDisc && vDisc.discount != null ? vDisc.discount
     : provider.defaultDiscount != null ? provider.defaultDiscount
     : station.defaultDiscount != null ? station.defaultDiscount : 1);
 
