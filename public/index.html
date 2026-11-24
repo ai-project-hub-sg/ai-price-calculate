@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.18 · e2e5c8f</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.19 · 93e753f</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -483,7 +483,19 @@ function scopeEditor(scope,onVendorChange,parentScope){
     scope.vendors=allFull?{}:vs;scope.modelIds=mids;
     delete scope.vendorIds;delete scope.series;
   };
-  const commit=()=>{derive();renderTree();onVendorChange&&onVendorChange(Object.keys(scope.vendors));};
+  const btnLabel=()=>{
+    const v=Object.keys(scope.vendors||{}),extra=(scope.modelIds||[]).length;
+    if(!v.length&&!extra)return '不限制（全部） ▾';
+    const parts=v.map(vid=>scope.vendors[vid].length?`${vid}(${scope.vendors[vid].length}系)`:`${vid}·全部`);
+    if(extra)parts.push(`散选${extra}`);
+    return parts.join(' ')+' ▾';
+  };
+  const btn=h('button',{onclick:e=>{e.stopPropagation();
+    const showing=panel.style.display!=='none';
+    if(openScopeDrop)openScopeDrop.style.display='none';
+    panel.style.display=showing?'none':'block';openScopeDrop=showing?null:panel;}});
+  const panel=h('div',{class:'pop',style:'display:none;min-width:340px;max-width:420px;max-height:380px'});
+  const commit=()=>{derive();btn.textContent=btnLabel();renderTree();onVendorChange&&onVendorChange(Object.keys(scope.vendors));};
   const renderTree=()=>{
     box.innerHTML='';upds.length=0;
     const q=qIn.value.toLowerCase();let any=false;
@@ -518,13 +530,14 @@ function scopeEditor(scope,onVendorChange,parentScope){
   };
   qIn.oninput=renderTree;
   renderTree();
-  onVendorChange&&onVendorChange(Object.keys(scope.vendors||{}));
-  return {el:h('div',{},
-    h('div',{class:'row'},h('button',{onclick:()=>{allIds.forEach(i=>sel.add(i));commit();}},'全选'),
+  btn.textContent=btnLabel();
+  panel.append(h('div',{class:'row'},h('button',{onclick:()=>{allIds.forEach(i=>sel.add(i));commit();}},'全选'),
       h('button',{onclick:()=>{allIds.forEach(i=>sel.has(i)?sel.delete(i):sel.add(i));commit();}},'反选'),
-      qIn,stat),
-    box),refresh:renderTree};
+      qIn,stat),box);
+  onVendorChange&&onVendorChange(Object.keys(scope.vendors||{}));
+  return {el:h('span',{class:'scdrop',style:'position:relative;display:inline-block'},btn,panel),refresh:renderTree};
 }
+let openScopeDrop=null;
 
 function editProvider(st,pr){
   const name=inp(pr.name),en=h('input',{type:'checkbox',checked:pr.enabled}),
@@ -768,6 +781,7 @@ function renderRecon(){
 function bindGlobal(){
   $('#tabs').onclick=e=>{if(e.target.dataset.t){state.tab=e.target.dataset.t;render();}};
   document.addEventListener('click',e=>{if(state.openFilter&&!e.target.closest('.fdrop')){state.openFilter=null;if(state.tab==='result')renderResult();}});
+  document.addEventListener('click',e=>{if(openScopeDrop&&!e.target.closest('.scdrop')){openScopeDrop.style.display='none';openScopeDrop=null;}});
   $('#pfSel').onchange=e=>{state.config.activeProfileId=e.target.value;$('#estProv').dataset.init='';$('#estProv').innerHTML='';render();};
   $('#pfNew').onclick=()=>{const n=prompt('新档案名','新配置');if(!n)return;const p=C.newProfile(n);state.config.profiles.push(p);state.config.activeProfileId=p.id;render();};
   $('#pfClone').onclick=()=>{const c=C.cloneNode(profile(),'profile');state.config.profiles.push(c);state.config.activeProfileId=c.id;render();};
