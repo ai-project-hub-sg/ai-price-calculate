@@ -438,8 +438,15 @@ function editProvider(st,pr){
     seriesSet.forEach(s=>{const on=scope.series.includes(s);
       sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);renderScope();}},s));});
     if(!scope.vendorIds.length&&!scope.series.length)sChips.append(h('small',{class:'dim'},'厂商与系列全不选=全量'));
-    mList.append(h('b',{},'或精确模型白名单: '));
-    (scope.modelIds||[]).forEach(id=>mList.append(h('span',{class:'chip',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},'×'+id)));
+    mList.innerHTML='';
+    const wl=scope.modelIds||[];
+    // 白名单非空时接管范围：厂商/系列置灰提示
+    const dimVS=wl.length>0;
+    vChips.style.opacity=sChips.style.opacity=dimVS?'0.45':'1';
+    vChips.style.pointerEvents=sChips.style.pointerEvents=dimVS?'none':'';
+    if(dimVS)mList.append(h('div',{style:'color:#b91c1c;font-size:12px'},`⚠ 精确白名单生效中（${wl.length} 个模型）——上方厂商/系列选择不生效`));
+    else mList.append(h('div',{class:'dim',style:'font-size:12px'},'可选：精确到具体模型（白名单非空时将覆盖厂商/系列选择）'));
+    wl.forEach(id=>mList.append(h('span',{class:'chip on',title:'点击移除',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},id+' ×')));
     mList.append(h('button',{onclick:()=>pickModels('白名单添加模型',ids=>{
       ids.forEach(id=>{if(!scope.modelIds.includes(id))scope.modelIds.push(id);});renderScope();})},'＋选择模型'));
     // 厂商级分档开关随所选厂商刷新
