@@ -13,8 +13,10 @@ window.DEMO_CONFIG = {
         mix: { input: 4, cacheRead: 95, cacheWrite: 0, output: 1 },
         offPeak: false,
         presets: [
-          { id: "pp-1", name: "对话均衡", promptTokens: 128000, mix: { input: 0.45, cacheRead: 0.3, cacheWrite: 0.05, output: 0.2 } },
-          { id: "pp-2", name: "高缓存读", promptTokens: 128000, mix: { input: 0.25, cacheRead: 0.6, cacheWrite: 0.05, output: 0.1 } }
+          { id: "cs-agentic", name: "社区·智能体编程(均值)", promptTokens: 128000, mix: { input: 4, cacheRead: 92, cacheWrite: 3, output: 1 } },
+          { id: "cs-claudecode", name: "社区·Claude轨迹", promptTokens: 128000, mix: { input: 5, cacheRead: 85, cacheWrite: 7, output: 3 } },
+          { id: "cs-chat", name: "社区·对话交互", promptTokens: 32000, mix: { input: 55, cacheRead: 15, cacheWrite: 5, output: 25 } },
+          { id: "pp-2", name: "高缓存读(自定义)", promptTokens: 128000, mix: { input: 25, cacheRead: 60, cacheWrite: 5, output: 10 } }
         ],
         activePreset: null
       },
@@ -91,7 +93,9 @@ window.DEMO_CONFIG = {
           basePrice: { tiers: [{ upToTokens: null, input: 0.7, output: 3.5, cacheRead: 0.07 }] } }
       ],
       vendorMix: [
-        { vendorId: "anthropic", mix: { input: 3, cacheRead: 90, cacheWrite: 2, output: 5 } }
+        { vendorId: "anthropic", mix: { input: 4, cacheRead: 85, cacheWrite: 6, output: 5 } },
+        { vendorId: "openai", mix: { input: 3, cacheRead: 93, cacheWrite: 0, output: 4 } },
+        { vendorId: "deepseek", mix: { input: 4, cacheRead: 92, cacheWrite: 0, output: 4 } }
       ],
       modelMix: [
         { modelId: "gpt-6.2-astra", mix: { input: 85, cacheRead: 5, cacheWrite: 5, output: 5 } }

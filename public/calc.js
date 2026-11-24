@@ -175,6 +175,31 @@ function blendedPrice(u, mix) {
 const DEFAULT_MIX = { input: 4, cacheRead: 95, cacheWrite: 0, output: 1 };
 
 /**
+ * 社区经验配比（来源：TraceLab/UW 2026 编码智能体轨迹 ~95.7% 前缀命中；
+ * GitHub Copilot 生产遥测 回合内90%/跨回合55%；Requesty 2026-10 客户端统计；
+ * Arize 缓存基准 DeepSeek93.6/GLM84.3/GPT77.7）。为估算预设，非精确值。
+ */
+const COMMUNITY_VENDOR_MIX = {
+  anthropic:   { input: 4,  cacheRead: 85, cacheWrite: 6,  output: 5  }, // Claude Code 轨迹：命中~85%且写占比高
+  openai:      { input: 3,  cacheRead: 93, cacheWrite: 0,  output: 4  }, // Codex ~96%，自动缓存无显式写价
+  google:      { input: 8,  cacheRead: 80, cacheWrite: 4,  output: 8  }, // 隐式缓存为主
+  deepseek:    { input: 4,  cacheRead: 92, cacheWrite: 0,  output: 4  }, // 93.6% 命中，命中/未命中计价无独立写价
+  zai:         { input: 10, cacheRead: 80, cacheWrite: 3,  output: 7  }, // GLM ~84%
+  "bigmodel-cn": { input: 10, cacheRead: 80, cacheWrite: 3, output: 7 },
+  moonshot:    { input: 12, cacheRead: 75, cacheWrite: 3,  output: 10 },
+  xai:         { input: 15, cacheRead: 70, cacheWrite: 3,  output: 12 },
+};
+
+/** 场景原型预设（社区 workload 形态） */
+const COMMUNITY_PRESETS = [
+  { id: "cs-agentic",  name: "社区·智能体编程(均值)", promptTokens: 128000, mix: { input: 4,  cacheRead: 92, cacheWrite: 3,  output: 1  } },
+  { id: "cs-claudecode", name: "社区·Claude轨迹",    promptTokens: 128000, mix: { input: 5,  cacheRead: 85, cacheWrite: 7,  output: 3  } },
+  { id: "cs-chat",     name: "社区·对话交互",        promptTokens: 32000,  mix: { input: 55, cacheRead: 15, cacheWrite: 5,  output: 25 } },
+  { id: "cs-longdoc",  name: "社区·长文写作/RAG",    promptTokens: 64000,  mix: { input: 75, cacheRead: 15, cacheWrite: 5,  output: 5  } },
+  { id: "cs-noreuse",  name: "社区·无复用(翻译/摘要)", promptTokens: 16000, mix: { input: 85, cacheRead: 0,  cacheWrite: 0,  output: 15 } },
+];
+
+/**
  * 配比逐级解析，优先级：提供商 > 中转站 > 具体模型(覆盖/档案级模型预设)
  * > 厂商(档案级厂商预设) > 档案公共预设 > DEFAULT_MIX。
  * entry 用于查厂商/模型预设，可省略（此时跳过该两级）。
@@ -301,10 +326,12 @@ function newProfile(name) {
     scenario: {
       promptTokens: 128000,
       mix: { ...DEFAULT_MIX },
-      offPeak: false, presets: [], activePreset: null,
+      offPeak: false, presets: COMMUNITY_PRESETS.map(p => ({ ...p, mix: { ...p.mix } })), activePreset: null,
     },
     tieredPricing: { enabled: true },
-    stations: [], modelOverrides: [], vendorMix: [], modelMix: [],
+    stations: [], modelOverrides: [],
+    vendorMix: Object.entries(COMMUNITY_VENDOR_MIX).map(([vendorId, mix]) => ({ vendorId, mix: { ...mix } })),
+    modelMix: [],
     display: { precision: 4, targetCurrency: CNY },
   };
 }
@@ -553,6 +580,7 @@ const Calc = {
   estimateRequest, newProvider, newStation, newProfile, defaultConfig,
   cloneNode, renameStation, validateConfig, validateTiers, tierLabelOf, fmtK,
   tiersFromEditor, isPeakTime, parseCsv, parseBillCsv, reconcile, cacheWritePrice, DEFAULT_MIX,
+  COMMUNITY_VENDOR_MIX, COMMUNITY_PRESETS,
 };
 
 if (typeof module !== "undefined" && module.exports) module.exports = Calc;

@@ -604,7 +604,12 @@ function editMixPresets(){
   renderV();renderM();
   drawer('配比预设',[h('div',{class:'hint'},'生效顺序：提供商 > 中转站 > 具体模型 > 厂商 > 公共默认（场景条上的配比即公共默认）'),
     h('div',{class:'box'},h('b',{},'公共默认'),h('div',{class:'row'},'输入',di.els[0],'缓读',di.els[1],'缓写',di.els[2],'输出',di.els[3])),
-    h('div',{class:'box'},h('b',{},'厂商级预设'),vList),
+    h('div',{class:'box'},h('b',{},'厂商级预设'),
+      h('button',{style:'margin-left:8px',onclick:()=>{
+        for(const [vid,mix] of Object.entries(C.COMMUNITY_VENDOR_MIX))
+          if(!vm.some(v=>v.vendorId===vid))vm.push({vendorId:vid,mix:{...mix}});
+        renderV();}},'载入社区预设'),
+      h('small',{class:'dim'},'（仅补未设置的厂商）'),vList),
     h('div',{class:'box'},h('b',{},'模型级预设'),mList)],
     ()=>{pf.scenario.mix=di.get();pf.vendorMix=vm.filter(v=>v.vendorId);pf.modelMix=mm.filter(v=>v.modelId);});
 }
