@@ -16,7 +16,7 @@
 - 类型：桌面优先的本地 Web 工具。前端=纯 HTML+JS 单文件式（`public/index.html`）+ 独立纯计算模块（`public/calc.js`，供 node:test 复用）；后端=Python 标准库零依赖（`server/app.py` http.server）；抓取器=`server/fetcher.py`（官方 .md 适配器）+ `server/nodepool.py`（v2rayN 节点池，VLESS+Reality→HY2，独立 xray/sing-box 端口，不改 v2rayN 配置）；持久化=`data/config.json` JSON 文件；运行=`python -m server.app --port 8787`。
 - 前端复杂度：低—中（数据表+表单工具，无实时/角色/动画要求）。
 - 关键目录：`public/`（前端）、`server/`（Python 后端，参考实现）、`server-go/`（Go 版后端，单二进制部署目标）、`data/`（价目+运行时配置）、`tests/`、`design/wireframes/`、`docs/`。
-- 每次开始先读：本文件当前阶段表 → `docs/PRD.md`、`docs/ARCHITECTURE.md`。
+- 每次开始先读：本文件当前阶段表 → `docs/PRD.md`、`docs/ARCHITECTURE.md`；**涉及 `server/` 或 `server-go/` 的改动另必读 `docs/DUAL_IMPLEMENTATION.md`**（双实现等价性清单与已知坑）。
 - 详细发现证据与待确认项：`docs/PROJECT_DISCOVERY.md`（含价目调研来源与冲突项 R2）。
 
 ## 当前阶段与审核记录

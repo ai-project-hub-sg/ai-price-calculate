@@ -1,50 +1,50 @@
 [
- {
-  "id": "deepseek-flash",
-  "name": "deepseek-flash",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.3,
-    "cacheRead": 0.006,
-    "output": 1.2
-   }
-  ],
-  "offPeakRatio": 0.5,
-  "peakWindows": [
-   [
-    "01:00",
-    "04:00"
-   ],
-   [
-    "06:00",
-    "10:00"
-   ]
-  ],
-  "peakNote": "UTC 工作日；法定节假日全天闲时（按工作日近似）"
- },
- {
-  "id": "deepseek-v4-pro",
-  "name": "deepseek-v4-pro",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.32,
-    "cacheRead": 0.044,
-    "output": 3.96
-   }
-  ],
-  "offPeakRatio": 0.5,
-  "peakWindows": [
-   [
-    "01:00",
-    "04:00"
-   ],
-   [
-    "06:00",
-    "10:00"
-   ]
-  ],
-  "peakNote": "UTC 工作日；法定节假日全天闲时（按工作日近似）"
- }
+  {
+    "id": "deepseek-flash",
+    "name": "deepseek-flash",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.3,
+        "cacheRead": 0.006,
+        "output": 1.2
+      }
+    ],
+    "offPeakRatio": 0.5,
+    "peakWindows": [
+      [
+        "01:00",
+        "04:00"
+      ],
+      [
+        "06:00",
+        "10:00"
+      ]
+    ],
+    "peakNote": "UTC 工作日；法定节假日全天闲时（按工作日近似）"
+  },
+  {
+    "id": "deepseek-v4-pro",
+    "name": "deepseek-v4-pro",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.32,
+        "cacheRead": 0.044,
+        "output": 3.96
+      }
+    ],
+    "offPeakRatio": 0.5,
+    "peakWindows": [
+      [
+        "01:00",
+        "04:00"
+      ],
+      [
+        "06:00",
+        "10:00"
+      ]
+    ],
+    "peakNote": "UTC 工作日；法定节假日全天闲时（按工作日近似）"
+  }
 ]

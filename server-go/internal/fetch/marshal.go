@@ -23,6 +23,7 @@ type Dataset struct {
 	rawProv   map[string]json.RawMessage // id → 原始子树字节
 	provs     map[string]map[string]any  // id → 已解析（dirty 才写）
 	dirty     map[string]bool
+	eol       string                     // 输入文件换行风格，写回保留（\n 或 \r\n）
 }
 
 // LoadDataset 读 models.json：顶层与 provider 子树保留原始字节。
@@ -40,6 +41,12 @@ func LoadDataset(path string) (*Dataset, error) {
 		rawProv: map[string]json.RawMessage{},
 		provs:   map[string]map[string]any{},
 		dirty:   map[string]bool{},
+		eol:     "\n",
+	}
+	if bytes.Contains(raw, []byte("\r\n")) {
+		// 保留输入换行风格：Windows 上 Python open("w") 产出 CRLF，
+		// 写回不引入整文件换行翻转噪音
+		d.eol = "\r\n"
 	}
 	// 顶层键序：按字节中出现顺序（json.Decoder token 流）
 	d.rootOrder = topLevelKeys(raw)
@@ -113,7 +120,8 @@ func (d *Dataset) Provider(id string) map[string]any {
 // Marshal 写回：meta 与未 dirty provider 原样；dirty provider canonical 序。
 func (d *Dataset) Marshal() ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("{\n")
+	b.WriteString("{")
+	b.WriteString(d.eol)
 	first := true
 	keys := append([]string{}, d.rootOrder...)
 	for _, k := range []string{"meta", "providers"} { // 兜底：顺序表缺失时补上
@@ -149,7 +157,8 @@ func (d *Dataset) Marshal() ([]byte, error) {
 			val = []byte("null")
 		}
 		if !first {
-			b.WriteString(",\n")
+			b.WriteString(",")
+			b.WriteString(d.eol)
 		}
 		first = false
 		b.WriteString("  ")
@@ -157,16 +166,19 @@ func (d *Dataset) Marshal() ([]byte, error) {
 		b.WriteString(": ")
 		b.Write(val) // raw 子树在原文件中已是正确绝对缩进，原样直通
 	}
-	b.WriteString("\n}")
+	b.WriteString(d.eol)
+	b.WriteString("}")
 	return b.Bytes(), nil
 }
 
 func (d *Dataset) marshalProviders() ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("[\n")
+	b.WriteString("[")
+	b.WriteString(d.eol)
 	for i, id := range d.provOrder {
 		if i > 0 {
-			b.WriteString(",\n")
+			b.WriteString(",")
+			b.WriteString(d.eol)
 		}
 		if d.dirty[id] {
 			// dirty：canonical 输出（depth-0）整体右移到数组元素位置（depth 2）
@@ -174,19 +186,21 @@ func (d *Dataset) marshalProviders() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			b.Write(indentBlock(out, 2))
+			b.Write(indentBlock(out, 2, d.eol))
 		} else {
 			// 未动：原始字节直通。raw 子串从 "{" 起，首行需补 depth-2 缩进，其余行已带正确绝对缩进。
 			b.WriteString("    ")
 			b.Write(d.rawProv[id])
 		}
 	}
-	b.WriteString("\n  ]")
+	b.WriteString(d.eol)
+	b.WriteString("  ]")
 	return b.Bytes(), nil
 }
 
-// indentBlock 把 depth-0 的格式化 JSON 文本整体右移 depth 级（全部行）。
-func indentBlock(raw []byte, depth int) []byte {
+// indentBlock 把 depth-0 的格式化 JSON 文本整体右移 depth 级（全部行），
+// 行尾统一为 eol（canonical 输出内部是 LF，JSON 字符串值不含字面换行，可安全替换）。
+func indentBlock(raw []byte, depth int, eol string) []byte {
 	pad := strings.Repeat("  ", depth)
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 	for i, l := range lines {
@@ -194,7 +208,7 @@ func indentBlock(raw []byte, depth int) []byte {
 			lines[i] = pad + l
 		}
 	}
-	return []byte(strings.Join(lines, "\n"))
+	return []byte(strings.Join(lines, eol))
 }
 
 var fieldOrders = map[string][]string{

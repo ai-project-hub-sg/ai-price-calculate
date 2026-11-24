@@ -1,266 +1,266 @@
 [
- {
-  "id": "glm-5.3",
-  "name": "GLM-5.3",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.4,
-    "cacheRead": 0.26,
-    "output": 4.4
-   }
-  ]
- },
- {
-  "id": "glm-5.3-flash",
-  "name": "GLM-5.3-Flash",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.15,
-    "cacheRead": 0.03,
-    "output": 0.5
-   }
-  ]
- },
- {
-  "id": "glm-5.3-flashx",
-  "name": "GLM-5.3-FlashX",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.37,
-    "cacheRead": 0.075,
-    "output": 1.25
-   }
-  ]
- },
- {
-  "id": "glm-5.3-flashx-legal",
-  "name": "GLM-5.3-FlashX-Legal",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.37,
-    "cacheRead": 0.075,
-    "output": 1.25
-   }
-  ]
- },
- {
-  "id": "glm-5.2",
-  "name": "GLM-5.2",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.4,
-    "cacheRead": 0.26,
-    "output": 4.4
-   }
-  ]
- },
- {
-  "id": "glm-5.1",
-  "name": "GLM-5.1",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.4,
-    "cacheRead": 0.26,
-    "output": 4.4
-   }
-  ]
- },
- {
-  "id": "glm-5",
-  "name": "GLM-5",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.0,
-    "cacheRead": 0.2,
-    "output": 3.2
-   }
-  ]
- },
- {
-  "id": "glm-4.7",
-  "name": "GLM-4.7",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.6,
-    "cacheRead": 0.11,
-    "output": 2.2
-   }
-  ]
- },
- {
-  "id": "glm-4.6",
-  "name": "GLM-4.6",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.6,
-    "cacheRead": 0.11,
-    "output": 2.2
-   }
-  ]
- },
- {
-  "id": "glm-4.7-flashx",
-  "name": "GLM-4.7-FlashX",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.07,
-    "cacheRead": 0.01,
-    "output": 0.4
-   }
-  ]
- },
- {
-  "id": "glm-4.5",
-  "name": "GLM-4.5",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.6,
-    "cacheRead": 0.11,
-    "output": 2.2
-   }
-  ]
- },
- {
-  "id": "glm-4.5-x",
-  "name": "GLM-4.5-X",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 2.2,
-    "cacheRead": 0.45,
-    "output": 8.9
-   }
-  ]
- },
- {
-  "id": "glm-4.5-air",
-  "name": "GLM-4.5-Air",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.2,
-    "cacheRead": 0.03,
-    "output": 1.1
-   }
-  ]
- },
- {
-  "id": "glm-4.5-airx",
-  "name": "GLM-4.5-AirX",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 1.1,
-    "cacheRead": 0.22,
-    "output": 4.5
-   }
-  ]
- },
- {
-  "id": "glm-4-32b-0414-128k",
-  "name": "GLM-4-32B-0414-128K",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.1,
-    "cacheRead": null,
-    "output": 0.1
-   }
-  ]
- },
- {
-  "id": "glm-4.7-flash",
-  "name": "GLM-4.7-Flash",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.0,
-    "cacheRead": 0.0,
-    "output": 0.0
-   }
-  ]
- },
- {
-  "id": "glm-4.5-flash",
-  "name": "GLM-4.5-Flash",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.0,
-    "cacheRead": 0.0,
-    "output": 0.0
-   }
-  ]
- },
- {
-  "id": "glm-4.6v",
-  "name": "GLM-4.6V",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.3,
-    "cacheRead": 0.05,
-    "output": 0.9
-   }
-  ]
- },
- {
-  "id": "glm-ocr",
-  "name": "GLM-OCR",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.03,
-    "cacheRead": null,
-    "output": 0.03
-   }
-  ]
- },
- {
-  "id": "glm-4.6v-flashx",
-  "name": "GLM-4.6V-FlashX",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.04,
-    "cacheRead": 0.004,
-    "output": 0.4
-   }
-  ]
- },
- {
-  "id": "glm-4.5v",
-  "name": "GLM-4.5V",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.6,
-    "cacheRead": 0.11,
-    "output": 1.8
-   }
-  ]
- },
- {
-  "id": "glm-4.6v-flash",
-  "name": "GLM-4.6V-Flash",
-  "tiers": [
-   {
-    "upToTokens": null,
-    "input": 0.0,
-    "cacheRead": 0.0,
-    "output": 0.0
-   }
-  ]
- }
+  {
+    "id": "glm-5.3",
+    "name": "GLM-5.3",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.4,
+        "cacheRead": 0.26,
+        "output": 4.4
+      }
+    ]
+  },
+  {
+    "id": "glm-5.3-flash",
+    "name": "GLM-5.3-Flash",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.15,
+        "cacheRead": 0.03,
+        "output": 0.5
+      }
+    ]
+  },
+  {
+    "id": "glm-5.3-flashx",
+    "name": "GLM-5.3-FlashX",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.37,
+        "cacheRead": 0.075,
+        "output": 1.25
+      }
+    ]
+  },
+  {
+    "id": "glm-5.3-flashx-legal",
+    "name": "GLM-5.3-FlashX-Legal",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.37,
+        "cacheRead": 0.075,
+        "output": 1.25
+      }
+    ]
+  },
+  {
+    "id": "glm-5.2",
+    "name": "GLM-5.2",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.4,
+        "cacheRead": 0.26,
+        "output": 4.4
+      }
+    ]
+  },
+  {
+    "id": "glm-5.1",
+    "name": "GLM-5.1",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.4,
+        "cacheRead": 0.26,
+        "output": 4.4
+      }
+    ]
+  },
+  {
+    "id": "glm-5",
+    "name": "GLM-5",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.0,
+        "cacheRead": 0.2,
+        "output": 3.2
+      }
+    ]
+  },
+  {
+    "id": "glm-4.7",
+    "name": "GLM-4.7",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.6,
+        "cacheRead": 0.11,
+        "output": 2.2
+      }
+    ]
+  },
+  {
+    "id": "glm-4.6",
+    "name": "GLM-4.6",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.6,
+        "cacheRead": 0.11,
+        "output": 2.2
+      }
+    ]
+  },
+  {
+    "id": "glm-4.7-flashx",
+    "name": "GLM-4.7-FlashX",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.07,
+        "cacheRead": 0.01,
+        "output": 0.4
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5",
+    "name": "GLM-4.5",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.6,
+        "cacheRead": 0.11,
+        "output": 2.2
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5-x",
+    "name": "GLM-4.5-X",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 2.2,
+        "cacheRead": 0.45,
+        "output": 8.9
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5-air",
+    "name": "GLM-4.5-Air",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.2,
+        "cacheRead": 0.03,
+        "output": 1.1
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5-airx",
+    "name": "GLM-4.5-AirX",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 1.1,
+        "cacheRead": 0.22,
+        "output": 4.5
+      }
+    ]
+  },
+  {
+    "id": "glm-4-32b-0414-128k",
+    "name": "GLM-4-32B-0414-128K",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.1,
+        "cacheRead": null,
+        "output": 0.1
+      }
+    ]
+  },
+  {
+    "id": "glm-4.7-flash",
+    "name": "GLM-4.7-Flash",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.0,
+        "cacheRead": 0.0,
+        "output": 0.0
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5-flash",
+    "name": "GLM-4.5-Flash",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.0,
+        "cacheRead": 0.0,
+        "output": 0.0
+      }
+    ]
+  },
+  {
+    "id": "glm-4.6v",
+    "name": "GLM-4.6V",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.3,
+        "cacheRead": 0.05,
+        "output": 0.9
+      }
+    ]
+  },
+  {
+    "id": "glm-ocr",
+    "name": "GLM-OCR",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.03,
+        "cacheRead": null,
+        "output": 0.03
+      }
+    ]
+  },
+  {
+    "id": "glm-4.6v-flashx",
+    "name": "GLM-4.6V-FlashX",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.04,
+        "cacheRead": 0.004,
+        "output": 0.4
+      }
+    ]
+  },
+  {
+    "id": "glm-4.5v",
+    "name": "GLM-4.5V",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.6,
+        "cacheRead": 0.11,
+        "output": 1.8
+      }
+    ]
+  },
+  {
+    "id": "glm-4.6v-flash",
+    "name": "GLM-4.6V-Flash",
+    "tiers": [
+      {
+        "upToTokens": null,
+        "input": 0.0,
+        "cacheRead": 0.0,
+        "output": 0.0
+      }
+    ]
+  }
 ]

@@ -27,6 +27,10 @@ MODELS_PATH = os.path.join(ROOT, "data", "models.json")
 
 TODAY = _dt.date.today().isoformat()
 
+# 判定"页面真实抓到"的最小字节数——Kimi 等 JS 渲染页返回的空壳 .md
+# 只有几百 B，低于此阈值视为未抓到（显式阈值，勿静默改）。
+MIN_USEFUL_BODY = 500
+
 
 # ---------------------------------------------------------------- 解析工具
 
@@ -413,7 +417,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
     for pid in targets:
         src = SOURCES[pid]
         r = nodepool.fetch_url(src["url"], None, timeout=12)
-        if r["status"] == 200 and r["bytes"] > 500:
+        if r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY:
             fetched[pid] = r["body"].decode("utf-8", "replace")
             report["providers"][pid] = {"via": "direct", "status": 200}
             log(f"[{pid}] 直连成功 {r['bytes']}B")
@@ -433,7 +437,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
             try:
                 with nodepool.proxy_through_node(win["node_id"]) as lp:
                     r = nodepool.fetch_url(SOURCES[pid]["url"], lp.port, timeout=15)
-                if r["status"] == 200 and r["bytes"] > 500:
+                if r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY:
                     fetched[pid] = r["body"].decode("utf-8", "replace")
                     report["providers"][pid] = {"via": f"node:{win['node']}",
                                                 "status": 200}

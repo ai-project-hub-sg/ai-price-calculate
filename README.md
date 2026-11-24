@@ -7,9 +7,13 @@ AI 中转站价格归一化计算器：把「官方价目 × 自定义基价 × 
 ## 快速启动
 
 ```bash
-# 需要 Python ≥ 3.10，零第三方依赖
+# 方式 A：Python ≥ 3.10，零第三方依赖
 python -m server.app          # → http://127.0.0.1:8787
 npm start                     # 同上（需 Node，仅为别名）
+
+# 方式 B：Go 单二进制（适合部署，内嵌前端与节点池）
+cd server-go && go run ./tools/syncassets && go build -o aipc-server ./cmd/server
+./aipc-server                 # → http://127.0.0.1:8787
 ```
 
 打开 `http://127.0.0.1:8787/` 即见演示数据（约 700+ 行结果）。后端不可用时直接双击 `public/index.html` 也能跑（localStorage 存储 + 演示数据集）。
@@ -36,6 +40,10 @@ npm start                     # 同上（需 Node，仅为别名）
 | `docs/ARCHITECTURE.md` | 架构与数据模型 |
 | `docs/DEVELOPMENT.md` | 开发环境与约定 |
 | `docs/TEST_PLAN.md` | 测试计划 |
+| `docs/DUAL_IMPLEMENTATION.md` | **双实现维护规则（改 server/ 或 server-go/ 前必读）** |
+| `docs/EXPLICIT_HARDENING.md` | 隐式行为显式化登记与一致性测试矩阵 |
+| `server-go/README.md` | Go 版快速开始/构建/测试/目录 |
+| `server-go/DEPLOYMENT.md` | Go 版 Linux VPS + systemd + nginx 部署 |
 | `AGENTS.md` | 项目工作规则 |
 
 ## 技术

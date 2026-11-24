@@ -2,6 +2,8 @@
 
 零依赖、无构建：Python 后端托管静态页 + API + 官方价目更新；也可完全离线双击 html 使用。
 
+> **Go 版部署**：单二进制 + 前端内嵌 + 进程内 sing-box 节点池（不依赖 v2rayN），面向 Linux VPS + nginx 反代，见 `server-go/DEPLOYMENT.md`。本文档描述 Python 版。
+
 ## 1. 运行要求
 
 | 依赖 | 版本 | 用途 |

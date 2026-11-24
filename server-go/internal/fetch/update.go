@@ -216,7 +216,7 @@ func (d *Dataset) MergeProvider(providerID string, rows []Row, today string) map
 			}
 		}
 	}
-	var updated, added, skippedRetired []string
+	updated, added, skippedRetired := []string{}, []string{}, []string{}
 	rowIDs := map[string]bool{}
 	for _, row := range rows {
 		mid, _ := row["id"].(string)
@@ -252,7 +252,7 @@ func (d *Dataset) MergeProvider(providerID string, rows []Row, today string) map
 			added = append(added, mid)
 		}
 	}
-	var missing []string
+	missing := []string{}
 	for mid := range existing {
 		if !rowIDs[mid] {
 			missing = append(missing, mid)

@@ -5,3 +5,6 @@
 # 前端同步产物（构建时由 tools/syncassets 从 ../public 生成；保留 .gitkeep 使裸 clone 可编译）
 /assets/public/*
 !/assets/public/.gitkeep
+
+# Windows 下 exe 被占用时 go build 的改名残留
+*.exe~

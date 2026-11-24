@@ -1,0 +1,287 @@
+{
+  "dataset": {
+    "meta": {
+      "version": "2026-11-24",
+      "description": "AI 厂商官方 API 价目数据集。所有价格单位均为「每 1M tokens」，币种见各厂商 currency 字段。仅收录官方价目页当前列出的模型；已下线/不存在的不收录。",
+      "tierBasis": "tiers 按 promptTokens（未命中输入 + 缓存命中输入）升序排列；命中第一个 upToTokens === null 或 promptTokens <= upToTokens 的档位。整档价格作用于全部 tokens（非分段累进）。",
+      "fields": {
+        "upToTokens": "该档适用的 prompt tokens 上限（含）；null 表示无上限（必须为最后一档）",
+        "input": "未命中缓存的输入价",
+        "output": "输出价（含思考/推理 tokens，除非另注）",
+        "cacheRead": "缓存命中输入价；null/缺省表示无单独缓存价（缓存读按 input 计）",
+        "cacheWrites": "缓存写入价数组 [{ttl, price}]，仅信息展示用，v1 归一化不纳入",
+        "offPeakRatio": "非高峰时段价格 = 标准价 × 该系数（可选）",
+        "fetchedAt": "本数据集最近一次从官方源取得/核对价格的日期",
+        "officialUpdatedAt": "官方最近价格生效/更新日期（与 fetchedAt 是两个概念）；未知为 null"
+      },
+      "disclaimer": "数据来自各厂商公开价目页（见每 provider.source 与 checkedAt），价格可能随时变动；应用内所有价格均可由用户覆盖。更新由 scripts/server 端官方源适配器执行，不覆盖用户自定义配置。"
+    },
+    "providers": [
+      {
+        "id": "deepseek",
+        "name": "DeepSeek",
+        "currency": "USD",
+        "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "checkedAt": "2026-11-24",
+        "officialUpdatedAt": null,
+        "autoFetch": true,
+        "autoFetchUrl": "https://api-docs.deepseek.com/quick_start/pricing.md",
+        "notes": "标准价为高峰价；非高峰（UTC 01:00-04:00 与 06:00-10:00 之外的时段，含周末与中国法定节假日）= 高峰价×offPeakRatio。缓存命中即缓存读价，无单独写入费。旧名 deepseek-chat/deepseek-reasoner 已于 2026-07-24 弃用（不在官方价目页），未收录。",
+        "models": [
+          {
+            "id": "deepseek-flash",
+            "name": "DeepSeek Flash (V4.1-Flash)",
+            "contextWindow": 1000000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "offPeakRatio": 0.5,
+            "tiers": [
+              {
+                "upToTokens": null,
+                "input": 0.3,
+                "cacheRead": 0.006,
+                "output": 1.2
+              }
+            ],
+            "notes": "表内为高峰价；非高峰 输入$0.15/缓存$0.003/输出$0.60。旧名 deepseek-v4-flash 同价。",
+            "peakWindows": [
+              [
+                "01:00",
+                "04:00"
+              ],
+              [
+                "06:00",
+                "10:00"
+              ]
+            ],
+            "peakNote": "UTC 工作日；法定节假日全天闲时（未内置日历，按工作日近似）"
+          },
+          {
+            "id": "deepseek-legacy",
+            "name": "DeepSeek Legacy",
+            "contextWindow": 64000,
+            "status": "active",
+            "fetchedAt": "2026-01-01",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": null,
+                "input": 1.0,
+                "output": 2.0
+              }
+            ],
+            "notes": "fixture 用：源中已消失的旧模型"
+          },
+          {
+            "id": "deepseek-v4-pro",
+            "name": "deepseek-v4-pro",
+            "tiers": [
+              {
+                "upToTokens": null,
+                "input": 1.32,
+                "cacheRead": 0.044,
+                "output": 3.96
+              }
+            ],
+            "offPeakRatio": 0.5,
+            "peakWindows": [
+              [
+                "01:00",
+                "04:00"
+              ],
+              [
+                "06:00",
+                "10:00"
+              ]
+            ],
+            "peakNote": "UTC 工作日；法定节假日全天闲时（按工作日近似）",
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "notes": "自动更新新增，请人工核对"
+          }
+        ]
+      },
+      {
+        "id": "xai",
+        "name": "xAI (Grok)",
+        "currency": "USD",
+        "source": "https://docs.x.ai/developers/pricing",
+        "checkedAt": "2026-11-24",
+        "officialUpdatedAt": null,
+        "autoFetch": true,
+        "autoFetchUrl": "https://docs.x.ai/developers/pricing.md",
+        "notes": "标注「Long context ≥200K」的模型在 prompt≥200K 时全请求按长档计费。美国区域端点价格为全球价 1.1×。Batch 对列出的 7 个文本模型 -20%。Priority=2×。Grok 4.7 Fast（2×，仅 Cursor/Grok Build）未收录。",
+        "models": [
+          {
+            "id": "grok-4.7",
+            "name": "Grok 4.7",
+            "contextWindow": 500000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 2,
+                "output": 6,
+                "cacheRead": 0.5
+              },
+              {
+                "upToTokens": null,
+                "input": 4,
+                "output": 12,
+                "cacheRead": 1
+              }
+            ]
+          },
+          {
+            "id": "grok-4.6",
+            "name": "Grok 4.6",
+            "contextWindow": 500000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 2,
+                "output": 6,
+                "cacheRead": 0.5
+              },
+              {
+                "upToTokens": null,
+                "input": 4,
+                "output": 12,
+                "cacheRead": 1
+              }
+            ]
+          },
+          {
+            "id": "grok-4.5",
+            "name": "Grok 4.5",
+            "contextWindow": 500000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 2,
+                "output": 6,
+                "cacheRead": 0.3
+              },
+              {
+                "upToTokens": null,
+                "input": 4,
+                "output": 12,
+                "cacheRead": 0.6
+              }
+            ]
+          },
+          {
+            "id": "grok-4.3",
+            "name": "Grok 4.3",
+            "contextWindow": 1000000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 1.25,
+                "output": 2.5,
+                "cacheRead": 0.2
+              },
+              {
+                "upToTokens": null,
+                "input": 2.5,
+                "output": 5,
+                "cacheRead": 0.4
+              }
+            ]
+          },
+          {
+            "id": "grok-4.20-0309-reasoning",
+            "name": "Grok 4.20 (0309) Reasoning",
+            "contextWindow": 1000000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 1.25,
+                "output": 2.5,
+                "cacheRead": 0.2
+              },
+              {
+                "upToTokens": null,
+                "input": 2.5,
+                "output": 5,
+                "cacheRead": 0.4
+              }
+            ]
+          },
+          {
+            "id": "grok-4.20-0309-non-reasoning",
+            "name": "Grok 4.20 (0309) Non-Reasoning",
+            "contextWindow": 1000000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 1.25,
+                "output": 2.5,
+                "cacheRead": 0.2
+              },
+              {
+                "upToTokens": null,
+                "input": 2.5,
+                "output": 5,
+                "cacheRead": 0.4
+              }
+            ]
+          },
+          {
+            "id": "grok-4.20-multi-agent-0309",
+            "name": "Grok 4.20 Multi-Agent (0309)",
+            "contextWindow": 1000000,
+            "status": "active",
+            "fetchedAt": "2026-11-24",
+            "officialUpdatedAt": null,
+            "tiers": [
+              {
+                "upToTokens": 199999,
+                "input": 1.25,
+                "output": 2.5,
+                "cacheRead": 0.2
+              },
+              {
+                "upToTokens": null,
+                "input": 2.5,
+                "output": 5,
+                "cacheRead": 0.4
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "report": {
+    "updated": [
+      "deepseek-flash"
+    ],
+    "added": [
+      "deepseek-v4-pro"
+    ],
+    "skippedRetired": [],
+    "missingInSource": [
+      "deepseek-legacy"
+    ]
+  }
+}
