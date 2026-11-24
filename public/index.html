@@ -52,7 +52,7 @@
 </head>
 <body>
 <header>
-  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.9 · 9e0237e</small></h1>
+  <h1>AI 价格归一化计算器 <small class="dim">Demo v0.10 · 8372a89</small></h1>
   <div class="profiles">
     档案 <select id="pfSel"></select>
     <button id="pfNew" class="primary">＋新建</button>
@@ -429,15 +429,19 @@ function editProvider(st,pr){
   const renderScope=()=>{
     vChips.innerHTML='';sChips.innerHTML='';mList.innerHTML='';
     vChips.append('厂商: ');
+    // 「全部」为显式选项：空选=全量时它自身呈蓝色选中态，消除白/蓝歧义
+    vChips.append(h('span',{class:'chip'+(!scope.vendorIds.length?' on':''),title:'不限制厂商',
+      onclick:()=>{scope.vendorIds=[];renderScope();}},'全部'));
     for(const v of state.dataset.providers){
       const on=scope.vendorIds.includes(v.id);
       vChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.vendorIds=scope.vendorIds.filter(x=>x!==v.id):scope.vendorIds.push(v.id);renderScope();}},v.id));
     }
     const seriesSet=[...new Set(models.filter(e=>!scope.vendorIds.length||scope.vendorIds.includes(e.vendor.id)).map(e=>C.classifySeries(e.model.id)))].sort();
     sChips.append('系列(级联): ');
+    sChips.append(h('span',{class:'chip'+(!scope.series.length?' on':''),title:'不限制系列',
+      onclick:()=>{scope.series=[];renderScope();}},'全部'));
     seriesSet.forEach(s=>{const on=scope.series.includes(s);
       sChips.append(h('span',{class:'chip'+(on?' on':''),onclick:()=>{on?scope.series=scope.series.filter(x=>x!==s):scope.series.push(s);renderScope();}},s));});
-    if(!scope.vendorIds.length&&!scope.series.length)sChips.append(h('small',{class:'dim'},'厂商与系列全不选=全量'));
     mList.innerHTML='';
     const wl=scope.modelIds||[];
     // 白名单非空时接管范围：厂商/系列置灰提示
