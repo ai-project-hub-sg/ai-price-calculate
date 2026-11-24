@@ -117,6 +117,7 @@ func Update(o Options) (map[string]any, error) {
 		bump(pid, +1)
 		emit(Progress{Phase: "direct", Item: pid,
 			ItemIndex: i + 1, ItemTotal: len(targets)})
+		log(fmt.Sprintf("[%s] 直连抓取…", pid)) // 「最近」行跟随当前项，不再停留在上一个厂家
 		r := proxypool.FetchURL(src.URL, 0, 12_000)
 		bump(pid, -1)
 		pr := map[string]any{"via": "direct", "status": r.Status}

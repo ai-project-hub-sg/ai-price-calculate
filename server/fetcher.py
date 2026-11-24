@@ -455,6 +455,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
         src = SOURCES[pid]
         bump(pid, True)
         emit("direct", item=pid, itemIndex=i + 1, itemTotal=len(targets))
+        log(f"[{pid}] 直连抓取…")  # 「最近」行跟随当前项，不再停留在上一个厂家
         r = nodepool.fetch_url(src["url"], None, timeout=12)
         bump(pid, False)
         ok = r["status"] == 200 and r["bytes"] > MIN_USEFUL_BODY
