@@ -566,7 +566,7 @@ function bindGlobal(){
     state.config=j;render();}catch(err){alert('解析失败: '+err.message);}};
   $('#scPrompt').onchange=e=>{profile().scenario.promptTokens=+e.target.value||0;render();};
   for(const [id,k] of [['mixI','input'],['mixC','cacheRead'],['mixW','cacheWrite'],['mixO','output']])
-    $(id).onchange=e=>{profile().scenario.mix[k]=+e.target.value||0;render();};
+    $('#'+id).onchange=e=>{profile().scenario.mix[k]=+e.target.value||0;render();};
   $('#presetSel').onchange=e=>{const p=(profile().scenario.presets||[]).find(x=>x.id===e.target.value);
     if(p){profile().scenario.mix={...p.mix};profile().scenario.promptTokens=p.promptTokens;render();}};
   $('#presetSave').onclick=()=>{const n=prompt('预设名');if(!n)return;
