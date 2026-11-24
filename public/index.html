@@ -190,6 +190,10 @@ async function boot(){
     if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
   } catch(e){}
   if(!state.dataset) state.dataset=FALLBACK_DATA;
+  // 全局模型 datalist：id 可直接输也可下拉选
+  const dl=h('datalist',{id:'allModels'});
+  for(const e of C.allModels(state.dataset))dl.append(h('option',{value:e.model.id,label:`${e.vendor.id} · ${e.model.name||''}`}));
+  document.body.append(dl);
   if(!state.config) state.config=window.DEMO_CONFIG?JSON.parse(JSON.stringify(window.DEMO_CONFIG)):C.defaultConfig();
   if(!state.backend) showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
   await loadFx();
@@ -308,9 +312,9 @@ function renderStations(){
       const lastProv=st.providers.length===1;
       tree.append(nodeEl(2,[h('b',{},`▼ 提供商: ${pr.name}`),pr.isDefault?'（默认商）':'',` 折:${pr.defaultDiscount??'继承'} `,
         sw(pr.tieredPricing?.enabled,'分档'),' ',pr.enabled?'☑启用':'☐停用',h('br'),h('small',{class:'dim'},`范围: ${scope}`)],
-        [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>{const id=prompt('覆盖的模型 id','gpt-6.2-astra');if(!id||!id.trim())return;
-          const o={id:'ov-'+Date.now().toString(36),modelId:id.trim(),discount:null,tieredPricing:{enabled:true}};
-          pr.modelOverrides.push(o);render();editModelOverride(pr,o);}],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
+        [['编辑',()=>editProvider(st,pr)],['＋覆盖',()=>pickModel('新增模型覆盖',id=>{
+          const o={id:'ov-'+Date.now().toString(36),modelId:id,discount:null,tieredPricing:{enabled:true}};
+          pr.modelOverrides.push(o);render();editModelOverride(pr,o);})],['⧉',()=>{st.providers.push(C.cloneNode(pr,'provider'));render();}],
          ['🗑',()=>lastProv?alert('站内最后一个提供商不可删除，可禁用'):del(`删除提供商「${pr.name}」？`,()=>{st.providers=st.providers.filter(x=>x!==pr);render();})]],!pr.enabled));
       for(const o of pr.modelOverrides||[]){
         const lbl=o.basePrice?`自定价(${o.basePrice.tiers.length}档)✎`:`折${o.discount}`;
@@ -321,6 +325,21 @@ function renderStations(){
     }
   }
 }
+/** 模型选择抽屉：datalist 支持输入过滤/下拉 */
+function pickModel(title,cb){
+  const input=h('input',{type:'text'});input.setAttribute('list','allModels');input.style.width='300px';
+  const ok=h('button',{class:'primary',onclick:()=>{
+    const v=input.value.trim();
+    if(!v)return;
+    d.hidden=true;cb(v);
+  }});
+  input.onkeydown=e=>{if(e.key==='Enter')ok.click();};
+  const d=$('#drawer');d.innerHTML='';d.hidden=false;
+  d.append(h('h3',{},title),row('模型',input,'（可输入过滤或下拉选择）'),
+    h('div',{class:'foot'},h('button',{onclick:()=>d.hidden=true},'取消'),ok));
+  input.focus();
+}
+
 function nodeEl(lvl,content,ops,off){
   const n=h('div',{class:`node lvl${lvl}${off?' off':''}`},...content);
   const o=h('span',{class:'ops'});for(const [t,fn] of ops)o.append(h('button',{onclick:fn},t));
@@ -389,7 +408,7 @@ function editProvider(st,pr){
     if(!scope.vendorIds.length&&!scope.series.length)sChips.append(h('small',{class:'dim'},'厂商与系列全不选=全量'));
     mList.append(h('b',{},'或精确模型白名单: '));
     (scope.modelIds||[]).forEach(id=>mList.append(h('span',{class:'chip',onclick:()=>{scope.modelIds=scope.modelIds.filter(x=>x!==id);renderScope();}},'×'+id)));
-    const mIn=inp('');mIn.placeholder='输入模型id回车添加';
+    const mIn=inp('');mIn.placeholder='输入模型id回车添加';mIn.setAttribute('list','allModels');mIn.style.width='200px';
     mIn.onkeydown=e=>{if(e.key==='Enter'&&mIn.value.trim()){scope.modelIds.push(mIn.value.trim());mIn.value='';renderScope();}};
     mList.append(mIn);
     // 厂商级分档开关随所选厂商刷新
@@ -548,7 +567,7 @@ function editMixPresets(){
   };
   const renderM=()=>{mList.innerHTML='';
     mm.forEach((v,i)=>{
-      const idIn=inp(v.modelId||'');idIn.placeholder='模型id';idIn.onchange=()=>{v.modelId=idIn.value.trim();};
+      const idIn=inp(v.modelId||'');idIn.placeholder='模型id';idIn.setAttribute('list','allModels');idIn.style.width='200px';idIn.onchange=()=>{v.modelId=idIn.value.trim();};
       const mi=mixInputs(v.mix);
       mList.append(h('div',{class:'row'},idIn,'输入',mi.els[0],'缓读',mi.els[1],'缓写',mi.els[2],'输出',mi.els[3],
         h('button',{onclick:()=>{mm.splice(i,1);renderM();}},'🗑')));
