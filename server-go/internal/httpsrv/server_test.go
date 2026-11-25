@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -590,5 +591,60 @@ func TestShutdownConflictWaitForJobsAndPanicRecovery(t *testing.T) {
 	}
 	if panicked.Status != "error" || !strings.Contains(panicked.Error, "offline boom") {
 		t.Fatalf("panic was not recorded: %+v", panicked)
+	}
+}
+
+func TestJobInputValidation(t *testing.T) {
+	server, _, handler := newTestServer(t)
+	token := loginToken(t, handler)
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":"25"}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":-1}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":1.5}`},
+		{"/api/pricing/update", `{"providers":"openai"}`},
+		{"/api/pricing/update", `{"providers":["openai",7]}`},
+		{"/api/pricing/update", `{"maxNodes":false}`},
+	}
+	for _, tc := range cases {
+		rec := performRequest(handler, http.MethodPost, tc.path, tc.body, token)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s %s status = %d, want 400; body = %s",
+				tc.path, tc.body, rec.Code, rec.Body.String())
+		}
+		requireErrorJSON(t, rec)
+	}
+	if got := jobCount(server); got != 0 {
+		t.Fatalf("invalid requests started %d jobs", got)
+	}
+}
+
+func TestFXCacheValidation(t *testing.T) {
+	server, _, handler := newTestServer(t)
+	token := loginToken(t, handler)
+	if err := os.WriteFile(server.fxPath(), []byte(`{"ts":`+fmt.Sprint(time.Now().Unix())+
+		`,"data":{"rate":7.2,"source":"cached","fetchedAt":"today"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := performRequest(handler, http.MethodGet, "/api/fx", "", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid cache status = %d; body = %s", rec.Code, rec.Body.String())
+	}
+	var data map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["rate"] != 7.2 || data["cached"] != true {
+		t.Fatalf("valid cache not returned: %v", data)
+	}
+	for _, rate := range []any{nil, true, "7.2", float64(0), -1, math.NaN(), math.Inf(1)} {
+		if validFXData(map[string]any{"rate": rate}) {
+			t.Errorf("invalid FX rate accepted: %v", rate)
+		}
+	}
+	if !validFXData(map[string]any{"rate": 7.2}) {
+		t.Fatal("positive finite FX rate rejected")
 	}
 }

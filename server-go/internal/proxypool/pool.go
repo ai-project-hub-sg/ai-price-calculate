@@ -5,12 +5,14 @@ package proxypool
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,10 +44,12 @@ func FetchURL(rawURL string, proxyPort int, timeoutMS int) Result {
 	if proxyPort > 0 {
 		proxy = http.ProxyURL(&url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", proxyPort)})
 	}
+	transport := &http.Transport{Proxy: proxy}
 	client := &http.Client{
 		Timeout:   time.Duration(timeoutMS) * time.Millisecond,
-		Transport: &http.Transport{Proxy: proxy},
+		Transport: transport,
 	}
+	defer transport.CloseIdleConnections()
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return Result{Error: "URL 格式错误: " + err.Error()}
@@ -55,7 +59,13 @@ func FetchURL(rawURL string, proxyPort int, timeoutMS int) Result {
 	resp, err := client.Do(req)
 	ms := int(time.Since(t0).Milliseconds())
 	if err != nil {
-		return Result{Status: 0, Ms: ms, Error: err.Error()}
+		message := err.Error()
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			message = urlErr.Err.Error()
+		}
+		message = strings.ReplaceAll(message, rawURL, "[URL 已隐藏]")
+		return Result{Status: 0, Ms: ms, Error: message}
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBodyBytes+1))
@@ -304,6 +314,36 @@ type NodeTestResult struct {
 	Error string `json:"error,omitempty"`
 }
 
+var probeNode = ProbeNode
+
+func probeSingleNode(n Node, probeURL string, timeoutMS int, cache *Cache, subURL string) (r NodeTestResult) {
+	r = NodeTestResult{ID: n.ID, Name: n.Label(), Kind: n.Kind}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			r.Error = fmt.Sprintf("探测异常: %v", recovered)
+			r.OK = false
+		}
+		if cache != nil {
+			cache.Mark(subURL, n, r.OK, r.Ms, r.Error)
+		}
+	}()
+	rep := probeNode(n, map[string]string{"_": probeURL}, timeoutMS, nil, nil)
+	if rep.Error != "" {
+		r.Error = rep.Error
+	} else if res, ok := rep.Results["_"]; ok {
+		r.Ms = res.Ms
+		if res.Status >= 200 && res.Status < 300 {
+			r.OK = true
+		} else {
+			r.Error = res.Error
+			if r.Error == "" {
+				r.Error = fmt.Sprintf("HTTP %d", res.Status)
+			}
+		}
+	}
+	return r
+}
+
 // TestNodes 对全部节点（至多 maxNodes 个）做连通性探测：每个节点起本地
 // sing-box 端口拉一次 probeURL，2xx 即判可用。与 FindWorking 不同——不为
 // 特定目标找首个胜者，而是完整测一遍给出可用率，供「测试节点」按钮展示。
@@ -330,25 +370,7 @@ func TestNodes(nodes []Node, probeURL string, maxNodes int, workers int, timeout
 			wg.Add(1)
 			go func(j int, n Node) {
 				defer wg.Done()
-				rep := ProbeNode(n, map[string]string{"_": probeURL}, timeoutMS, nil, nil)
-				r := NodeTestResult{ID: n.ID, Name: n.Label(), Kind: n.Kind}
-				if rep.Error != "" {
-					r.Error = rep.Error
-				} else if res, ok := rep.Results["_"]; ok {
-					r.Ms = res.Ms
-					if res.Status >= 200 && res.Status < 300 {
-						r.OK = true
-					} else {
-						r.Error = res.Error
-						if r.Error == "" {
-							r.Error = fmt.Sprintf("HTTP %d", res.Status)
-						}
-					}
-				}
-				results[j] = r
-				if cache != nil {
-					cache.Mark(subURL, n, r.OK, r.Ms, r.Error)
-				}
+				results[j] = probeSingleNode(n, probeURL, timeoutMS, cache, subURL)
 			}(j, probed[j])
 		}
 		wg.Wait()

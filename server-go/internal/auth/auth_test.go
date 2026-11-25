@@ -254,6 +254,23 @@ func TestLoginRateLimitWindowExpires(t *testing.T) {
 	}
 }
 
+func TestCleanupRemovesOtherClientsExpiredFailures(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	m := NewManager("admin", "secret")
+	m.now = func() time.Time { return now }
+	for _, client := range []string{"client-a", "client-b"} {
+		_, _ = m.Login("admin", "wrong", client)
+	}
+
+	now = now.Add(rateLimitWindow)
+	if _, err := m.Login("admin", "secret", "client-c"); err != nil {
+		t.Fatalf("Login() after window error = %v", err)
+	}
+	if len(m.failures) != 0 {
+		t.Fatalf("expired failures = %d, want 0", len(m.failures))
+	}
+}
+
 func TestNewManagerUsesRandomSalt(t *testing.T) {
 	first := NewManager("admin", "secret")
 	second := NewManager("admin", "secret")

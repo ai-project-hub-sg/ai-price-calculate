@@ -25,14 +25,33 @@ func TestMarshalCanonicalNumbers(t *testing.T) {
 	}
 }
 
+func TestMarshalCanonicalSmallNumbers(t *testing.T) {
+	out, err := MarshalCanonical(map[string]any{
+		"tiny": float64(0.0000001), "whole": float64(1), "large": float64(1050000),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	if strings.Contains(s, "e+") || strings.Contains(s, "e-") ||
+		strings.Contains(s, "E+") || strings.Contains(s, "E-") {
+		t.Fatalf("canonical JSON 不应使用科学计数法: %s", s)
+	}
+	for _, want := range []string{`"tiny": 0.0000001`, `"whole": 1.0`, `"large": 1050000.0`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("缺少 %s: %s", want, s)
+		}
+	}
+}
+
 // canonical 键序：provider 形状按 fieldOrders，未知键排尾。
 func TestCanonicalKeyOrder(t *testing.T) {
 	out, err := MarshalCanonical(map[string]any{
-		"models":   []any{},
-		"id":       "x",
+		"models":    []any{},
+		"id":        "x",
 		"checkedAt": "2026-11-24",
-		"name":     "X",
-		"zzExtra":  1.0,
+		"name":      "X",
+		"zzExtra":   1.0,
 	})
 	if err != nil {
 		t.Fatal(err)

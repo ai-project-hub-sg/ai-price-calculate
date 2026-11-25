@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
 import signal
 import sys
@@ -29,6 +30,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from . import fetcher, nodepool, security, validation
 
@@ -89,17 +91,37 @@ def _write_config(cfg: dict):
             pass
 
 
-def _fx() -> dict:
+def _valid_fx_data(data: object) -> bool:
+    if not isinstance(data, dict):
+        return False
+    rate = data.get("rate")
+    return (
+        isinstance(rate, (int, float))
+        and not isinstance(rate, bool)
+        and math.isfinite(rate)
+        and rate > 0
+    )
+
+
+def _fx(refresh: bool = False) -> dict:
     cache = _read_json(FX_CACHE, None)
-    if cache and time.time() - cache.get("ts", 0) < FX_TTL:
+    if (
+        not refresh
+        and cache
+        and time.time() - cache.get("ts", 0) < FX_TTL
+        and _valid_fx_data(cache.get("data"))
+    ):
         return {**cache["data"], "cached": True}
     # 严格直连（nodepool.fetch_url 显式空 ProxyHandler，不读环境变量代理）
     r = nodepool.fetch_url(FX_URL, None, timeout=10)
     if r["status"] != 200:
         raise RuntimeError(f"汇率源 HTTP {r['status']} {r.get('error','')}")
     payload = json.loads(r["body"])
-    data = {"rate": payload["rates"]["CNY"], "source": FX_URL,
+    rate = payload["rates"]["CNY"]
+    data = {"rate": rate, "source": FX_URL,
             "fetchedAt": payload.get("time_last_update_utc", "")}
+    if not _valid_fx_data(data):
+        raise ValueError("汇率源返回的 CNY 汇率无效")
     os.makedirs(DATA, exist_ok=True)
     with open(FX_CACHE, "w", encoding="utf-8") as f:
         json.dump({"ts": time.time(), "data": data}, f)
@@ -253,7 +275,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": f"config.json 解析失败: {e}"}, 500)
         elif path == "/api/fx":
             try:
-                self._json(_fx())
+                refresh = parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]
+                self._json(_fx(refresh=refresh))
             except Exception as e:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 502)
         elif path == "/api/nodes":
@@ -309,13 +332,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def _max_nodes(self, body: dict) -> int | None:
-        try:
-            value = int(body.get("maxNodes", 25))
-        except (TypeError, ValueError, OverflowError):
-            self._json({"error": "maxNodes 必须是整数"}, 400)
+        value = body.get("maxNodes", 25)
+        if value is None:
+            value = 25
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            self._json({"error": "maxNodes 必须是非负整数"}, 400)
             return None
-        if value < 0:
-            self._json({"error": "maxNodes 不能为负数"}, 400)
+        return value
+
+    def _providers(self, body: dict) -> list[str] | None:
+        value = body.get("providers")
+        if value is None:
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            self._json({"error": "providers 必须是字符串数组"}, 400)
             return None
         return value
 
@@ -360,6 +390,9 @@ class Handler(BaseHTTPRequestHandler):
             max_nodes = self._max_nodes(body)
             if max_nodes is None:
                 return
+            providers = self._providers(body)
+            if providers is None:
+                return
             job_id = uuid.uuid4().hex[:8]
             if not self._start_job(job_id, {
                     "status": "running", "report": None, "log": [],
@@ -368,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             threading.Thread(
                 target=_run_update,
-                args=(job_id, body.get("providers"), max_nodes),
+                args=(job_id, providers, max_nodes),
                 daemon=True).start()
             self._json({"jobId": job_id})
         elif path == "/api/nodes/test":

@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -289,11 +291,7 @@ func writeValue(b *bytes.Buffer, v any, depth int) error {
 			b.WriteString("false")
 		}
 	case float64, float32, int, int64, int32, uint64:
-		raw, err := json.Marshal(t) // encoding/json 的数字格式（1050000 而非 1.05e+06）
-		if err != nil {
-			return err
-		}
-		b.Write(raw)
+		return writeNumber(b, t)
 	default:
 		rv := reflect.ValueOf(v)
 		if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
@@ -301,6 +299,36 @@ func writeValue(b *bytes.Buffer, v any, depth int) error {
 		}
 		return fmt.Errorf("unsupported JSON value type %T", v)
 	}
+	return nil
+}
+
+func writeNumber(b *bytes.Buffer, v any) error {
+	var raw string
+	switch n := v.(type) {
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return fmt.Errorf("unsupported JSON number %v", n)
+		}
+		raw = strconv.FormatFloat(n, 'f', -1, 64)
+		if !strings.Contains(raw, ".") {
+			raw += ".0"
+		}
+	case float32:
+		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) {
+			return fmt.Errorf("unsupported JSON number %v", n)
+		}
+		raw = strconv.FormatFloat(float64(n), 'f', -1, 32)
+		if !strings.Contains(raw, ".") {
+			raw += ".0"
+		}
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		raw = string(encoded)
+	}
+	b.WriteString(raw)
 	return nil
 }
 

@@ -206,6 +206,14 @@ class AppServerTests(unittest.TestCase):
         self.assertIn("error", payload)
         self.assertEqual(self.config_path.read_bytes(), original)
 
+    def test_subscription_url_limit_counts_utf8_bytes(self):
+        prefix = "https://example.invalid/"
+        accepted = prefix + "é" * 2000
+        rejected = prefix + "é" * 2100
+        self.assertEqual(app.validation.validate_proxy_url(accepted), accepted)
+        with self.assertRaisesRegex(ValueError, "URL 格式错误"):
+            app.validation.validate_proxy_url(rejected)
+
     def test_config_subscription_validation_and_empty_values(self):
         original = {"marker": "original", "proxySubscription": ""}
         self.config_path.write_text(json.dumps(original), encoding="utf-8")
@@ -306,6 +314,24 @@ class AppServerTests(unittest.TestCase):
             cache.assert_not_called()
             self.assertEqual(len(run.call_args.args), 3)
 
+    def test_job_input_validation_does_not_start_jobs(self):
+        token = self.login()
+        for path in ("/api/pricing/update", "/api/nodes/test"):
+            for value in (-1, 1.5, "3", True):
+                with self.subTest(path=path, maxNodes=value):
+                    status, payload, _ = self.request_json(
+                        "POST", path, {"maxNodes": value}, token=token)
+                    self.assertEqual(status, 400)
+                    self.assertIn("maxNodes", payload["error"])
+        for value in ("xai", ["xai", 1], {}):
+            with self.subTest(providers=value):
+                status, payload, _ = self.request_json(
+                    "POST", "/api/pricing/update", {"providers": value}, token=token)
+                self.assertEqual(status, 400)
+                self.assertIn("providers", payload["error"])
+        with app._JOBS_LOCK:
+            self.assertEqual(app._JOBS, {})
+
     def test_shutdown_rejects_running_job(self):
         token = self.login()
         started = threading.Event()
@@ -360,6 +386,47 @@ class AppServerTests(unittest.TestCase):
                 app.main()
         self.assertIn("启动失败", str(caught.exception))
         self.assertIn("AIPC_ADMIN_PASSWORD", str(caught.exception))
+
+
+    def test_fx_refresh_and_invalid_cache(self):
+        token = self.login()
+        cache = {
+            "ts": time.time(),
+            "data": {"rate": 7.2, "source": "cached", "fetchedAt": "today"},
+        }
+        (self.data / "fx-cache.json").write_text(json.dumps(cache), encoding="utf-8")
+        status, payload, _ = self.request_json(
+            "GET", "/api/fx", token=token)
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["cached"])
+
+        calls = []
+
+        def fake_fetch(url, proxy_port, timeout):
+            calls.append(url)
+            body = json.dumps({"rates": {"CNY": 7.3},
+                               "time_last_update_utc": "now"}).encode()
+            return {"status": 200, "body": body}
+
+        with mock.patch.object(app.nodepool, "fetch_url", side_effect=fake_fetch):
+            status, payload, _ = self.request_json(
+                "GET", "/api/fx?refresh=1", token=token)
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["rate"], 7.3)
+            self.assertFalse(payload["cached"])
+            cache["data"]["rate"] = 0
+            (self.data / "fx-cache.json").write_text(
+                json.dumps(cache), encoding="utf-8")
+            status, payload, _ = self.request_json(
+                "GET", "/api/fx", token=token)
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["rate"], 7.3)
+        self.assertEqual(len(calls), 2)
+
+        for rate in (None, True, "7.3", 0, -1, float("nan"), float("inf")):
+            with self.subTest(rate=rate):
+                self.assertFalse(app._valid_fx_data({"rate": rate}))
+        self.assertTrue(app._valid_fx_data({"rate": 7.3}))
 
 
 class FetcherAtomicWriteTests(unittest.TestCase):

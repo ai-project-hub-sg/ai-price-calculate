@@ -3,7 +3,7 @@
 ## 1. 环境
 
 - Python ≥ 3.10（开发机 3.14.7）——后端/抓取器，零第三方依赖（`http.server`/`urllib`/`sqlite3`/`subprocess`）。
-- Node.js ≥ 20（开发机 v24.21.0）——仅用于 `npm` 命令别名与 `tests/` 单元测试；无 npm 依赖、无构建步骤。
+- Node.js ≥ 20（开发机 v24.22.1）——仅用于 `npm` 命令别名与 `tests/` 单元测试；无 npm 依赖、无构建步骤。
 - 价目更新的节点池依赖本机 v2rayN（读 `%LOCALAPPDATA%/v2rayN` 的 SQLite 节点库与 `bin/` 下 xray、sing-box，全程只读不改配置）；无 v2rayN 时仍可直连抓取 + 人工核对。
 - Windows 开发，路径与脚本以跨平台方式书写（不依赖 shell 特性）。
 
@@ -16,7 +16,9 @@
 | 节点池探测 | `python -m server.nodepool [节点数]` | 已实现 |
 | 单元测试 | `npm test`：Node 自动发现测试 + Python unittest | URL 校验、鉴权、原子写、并发与 API 回归已覆盖；计算核心用例仍待补 |
 | 语法自检 | `python -m compileall server`、`node --check public/calc.js` | 部分可用 |
-| 纯前端打开 | 直接双击 `public/index.html` | 待实现 |
+| Go 测试 | `cd server-go && go test ./...`；协议路径 `go test -tags "with_utls with_quic" ./...` | 默认/tagged/race 入口 |
+| Go 构建 | `cd server-go && go run ./tools/syncassets && go build -tags "with_utls with_quic" -o aipc-server.exe ./cmd/server` | tags 不可省 |
+| 纯前端打开 | 直接双击 `public/index.html` | 可计算；自动汇率不可用时回退手动/上次值 |
 
 当前阶段进度见 [`docs/STATUS.md`](STATUS.md)（本文件不记进度，防失真）。
 

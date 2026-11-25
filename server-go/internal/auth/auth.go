@@ -98,18 +98,27 @@ func LoadManager() (*Manager, error) {
 
 // Login verifies credentials, applies per-client failure limiting, and creates a session.
 func (m *Manager) Login(username, password, clientKey string) (Session, error) {
+	now := m.now()
+	m.mu.Lock()
+	m.cleanupExpiredLocked(now)
+	if len(m.recentFailuresLocked(clientKey, now)) >= maxFailedLogins {
+		m.mu.Unlock()
+		return Session{}, ErrRateLimited
+	}
+	m.mu.Unlock()
+
+	// The verifier is immutable after construction; PBKDF2 must not block Authenticate.
+	passwordHash := hashPassword(m.salt[:], password)
+	usernameMatches := subtle.ConstantTimeCompare([]byte(username), []byte(m.username)) == 1
+	passwordMatches := subtle.ConstantTimeCompare(passwordHash[:], m.passwordHash[:]) == 1
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	now := m.now()
+	now = m.now()
 	m.cleanupExpiredLocked(now)
 	if len(m.recentFailuresLocked(clientKey, now)) >= maxFailedLogins {
 		return Session{}, ErrRateLimited
 	}
-
-	passwordHash := hashPassword(m.salt[:], password)
-	usernameMatches := subtle.ConstantTimeCompare([]byte(username), []byte(m.username)) == 1
-	passwordMatches := subtle.ConstantTimeCompare(passwordHash[:], m.passwordHash[:]) == 1
 	if !m.usable || !usernameMatches || !passwordMatches {
 		m.failures[clientKey] = append(m.recentFailuresLocked(clientKey, now), now)
 		return Session{}, ErrInvalidCredentials
@@ -217,6 +226,9 @@ func (m *Manager) cleanupExpiredLocked(now time.Time) {
 		if claims.ExpiresAt <= now.Unix() {
 			delete(m.sessions, tokenHash)
 		}
+	}
+	for clientKey := range m.failures {
+		m.recentFailuresLocked(clientKey, now)
 	}
 }
 

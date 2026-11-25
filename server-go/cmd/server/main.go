@@ -23,8 +23,20 @@ import (
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/httpsrv"
 )
 
+func defaultDataDir() (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("定位可执行文件失败: %w", err)
+	}
+	return filepath.Dir(executable), nil
+}
+
 func main() {
-	exeDir, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+	exeDir, err := defaultDataDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	host := flag.String("host", "127.0.0.1", "监听地址")
 	port := flag.Int("port", 8787, "监听端口")
 	data := flag.String("data", filepath.Join(exeDir, "data"),
@@ -47,7 +59,14 @@ func main() {
 	}
 	srv := httpsrv.New(*data, publicDir, assets.Public, authManager)
 	addr := fmt.Sprintf("%s:%d", *host, *port)
-	httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           srv.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	var shutdownOnce sync.Once
 	shutdown := func() {
 		shutdownOnce.Do(func() {

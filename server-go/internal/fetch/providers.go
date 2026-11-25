@@ -56,7 +56,7 @@ func ParseXAI(md string) []Row {
 		thr, _ := tokens(m[3] + "k")
 		ent, ok := models[mid]
 		if !ok {
-			ent = Row{"id": mid, "name": mid, "tiers": []Row{}}
+			ent = Row{"id": mid, "name": mid, "contextWindow": nil, "tiers": []Row{}}
 			if cw, ok := tokens(c[1]); ok {
 				ent["contextWindow"] = cw
 			}
@@ -322,11 +322,11 @@ func ParseAnthropic(md string) []Row {
 // ---------------------------------------------------------------- Google
 
 var (
-	googSecRe = regexp.MustCompile(`(?m)^##\s+(.+?)\s*\{%\s*id="([\w.\-]+)"\s*%\}`)
-	googTabRe = regexp.MustCompile(`(?s)\{%\s*tab title="Standard"[^%]*%\}(.*?)\{%\s*/tab`)
-	googFldRe = regexp.MustCompile(`^\s*\*\s*(Input price[^\n]*|Output price[^\n]*|Context caching price[^\n]*)\s*$`)
-	googPairRe = regexp.MustCompile(`(?i)\$(\d+(?:\.\d+)?)\s*,?\s*(prompts?\s*(?:<=|<|>|>=)\s*[\d,]+\s*k?)?`)
-	googThrRe  = regexp.MustCompile(`([\d,]+)\s*k`)
+	googSecRe   = regexp.MustCompile(`(?m)^##\s+(.+?)\s*\{%\s*id="([\w.\-]+)"\s*%\}`)
+	googTabRe   = regexp.MustCompile(`(?s)\{%\s*tab title="Standard"[^%]*%\}(.*?)\{%\s*/tab`)
+	googFldRe   = regexp.MustCompile(`^\s*\*\s*(Input price[^\n]*|Output price[^\n]*|Context caching price[^\n]*)\s*$`)
+	googPairRe  = regexp.MustCompile(`(?i)\$(\d+(?:\.\d+)?)\s*,?\s*(prompts?\s*(?:<=|<|>|>=)\s*[\d,]+\s*k?)?`)
+	googThrRe   = regexp.MustCompile(`([\d,]+)\s*k`)
 	googPromoRe = regexp.MustCompile(`through\s+([A-Za-z]+\s+\d+,\s*\d{4})`)
 	googWSRe    = regexp.MustCompile(`\s+`)
 )
@@ -492,7 +492,7 @@ var (
 // ParseBigmodel 复合分档按 promptTokens 近似：同输入区间内取“输出≥0.2K”行。
 func ParseBigmodel(md string) []Row {
 	type cand struct {
-		ctx           string
+		ctx                      string
 		input, output, cacheRead any
 	}
 	type group struct {

@@ -10,7 +10,7 @@ def validate_proxy_url(value: object) -> str:
     raw = value.strip()
     if not raw:
         raise ValueError("代理订阅 URL 不能为空")
-    if len(raw) > 4096 or any(ch.isspace() for ch in raw):
+    if len(raw.encode("utf-8")) > 4096 or any(ch.isspace() for ch in raw):
         raise ValueError("代理订阅 URL 格式错误")
     if re.search(r"%(?![0-9a-fA-F]{2})", raw):
         raise ValueError("代理订阅 URL 格式错误")

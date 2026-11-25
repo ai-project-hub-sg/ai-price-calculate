@@ -278,13 +278,15 @@ let saveT=null;
 function persist(){
   localStorage.setItem(LS_CFG,JSON.stringify(state.config));
   clearTimeout(saveT);
-  if(state.backend) saveT=setTimeout(()=>api('/api/config',{method:'PUT',body:JSON.stringify(state.config)})
-    .catch(e=>{if(e.status!==401)showBanner('配置保存失败: '+e.message);}),400);
+  if(state.backend) saveT=setTimeout(async()=>{
+    try{await apiJSON('/api/config',{method:'PUT',body:JSON.stringify(state.config)});}
+    catch(e){if(e.status!==401)showBanner('配置保存失败: '+e.message);}
+  },400);
 }
-async function loadFx(){
+async function loadFx(force=false){
   const pf=profile();
   if(pf.exchangeRate.mode==='manual'){state.rate=+pf.exchangeRate.manualValue||7.10;state.rateInfo='手动';return;}
-  try{const j=await apiJSON('/api/fx');
+  try{const j=await apiJSON('/api/fx'+(force?'?refresh=1':''));
     state.rate=j.rate;state.rateInfo=`${j.source.includes('er-api')?'er-api':'源'} ${j.fetchedAt||''}`.slice(0,28);
     pf.exchangeRate.auto={value:j.rate,source:j.source,fetchedAt:j.fetchedAt};
   }catch(e){state.rateInfo='获取失败·用上次/手动值';}
@@ -959,7 +961,7 @@ function bindGlobal(){
   $('#scTiered').onchange=e=>{profile().tieredPricing={enabled:e.target.checked};render();};
   $('#fxMode').onchange=e=>{profile().exchangeRate.mode=e.target.value;if(e.target.value==='manual')profile().exchangeRate.manualValue=+$('#fxVal').value||7.1;loadFx().then(render);};
   $('#fxVal').onchange=e=>{profile().exchangeRate.manualValue=+e.target.value;state.rate=+e.target.value;render();};
-  $('#fxRefresh').onclick=()=>loadFx().then(render);
+  $('#fxRefresh').onclick=()=>loadFx(true).then(render);
   $('#stNew').onclick=()=>{const n=prompt('站点名');if(!n)return;profile().stations.push(C.newStation(n));render();};
   $('#offSearch').oninput=renderOfficial;
   $('#subUrl').value=state.config.proxySubscription||'';

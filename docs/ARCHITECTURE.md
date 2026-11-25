@@ -270,7 +270,8 @@ Python 版 nodepool 硬编码 Windows v2rayN（读 sqlite 节点库 + 拉起 xra
 | config.json/models.json 损坏时静默返回默认/空（下次 PUT 无声覆盖） | 解析失败 → 500 + 日志 |
 | `./public` 存在则用磁盘否则内嵌（换 cwd 即换 UI 来源） | 默认=embed；磁盘仅 `--public` 显式指定 |
 | `--data ./data` 相对 cwd（换目录启动凭空建新 data/） | 默认=可执行文件同目录 `data/`；flag 可覆盖 |
-| vless/hy2 URI userinfo 百分号编码未解码 | 显式 `QueryUnescape` |
+| vless/hy2 URI userinfo 百分号编码 | `url.Parse` 已解码一次，直接使用 `User.Username()`；禁止再次 `QueryUnescape`（否则合法 `+` 变空格） |
+| 非法 job 参数静默采用默认值/更新全部源 | `providers` 必须是字符串数组、`maxNodes` 必须是非负整数；非法输入 400 且不创建 job |
 
 ### 10.4 models.json 写回策略（Go 特有）
 
@@ -278,7 +279,10 @@ Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会�
 
 ### 10.5 与 Python 版的行为差异（有意）
 
-- `PUT /api/config`：两版均校验 JSON 对象与 proxySubscription URL（允许空）；其余 schema 仍由前端 validateConfig 负责，写回原子化。
+- `PUT /api/config`：两版均校验 JSON 对象与 proxySubscription URL（允许空、上限 4096 UTF-8 字节）；其余 schema 仍由前端 validateConfig 负责，写回原子化。
+- `/api/fx`：两端只接受有限正数汇率；`?refresh=1` 绕过缓存，无效缓存与无效上游均不落盘。
+- `/api/nodes/test`、`/api/pricing/update`：严格校验 `maxNodes` 与 `providers`；`MaxNodes=0` 表示全部节点。
+- Go HTTP 连接超时：ReadHeader 5s、Read 15s、Write 60s、Idle 60s；异步 job 与订阅拉取在独立 goroutine 中执行。
 - `/api/nodes`：节点来源不同（订阅 vs v2rayN），见 10.2。
 - 监听地址：Go `--host` 默认 127.0.0.1 与 Python 一致；nginx 同机反代无需放开。
 - Go 版二进制 ~55MB（内嵌 sing-box，含 uTLS+QUIC tags），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build -tags "with_utls with_quic"` 直接产物。

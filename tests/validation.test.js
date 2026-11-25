@@ -15,6 +15,12 @@ test('http and https URLs are normalized', () => {
   assert.equal(normalizeProxyUrl('https://example.com:65535/sub'), 'https://example.com:65535/sub');
 });
 
+test('URL limit counts UTF-8 bytes rather than characters', () => {
+  assert.equal(normalizeProxyUrl('https://example.com/' + 'é'.repeat(2000)),
+    'https://example.com/' + 'é'.repeat(2000));
+  assert.throws(() => normalizeProxyUrl('https://example.com/' + 'é'.repeat(2100)), /URL 格式错误/);
+});
+
 test('malformed or incomplete URLs are rejected', () => {
   for (const value of [
     'example.com/sub', '/sub', 'ftp://example.com/sub', 'https://',

@@ -65,8 +65,8 @@ func Update(o Options) (map[string]any, error) {
 		targets = SourceOrder
 	}
 	maxNodes := o.MaxNodes
-	if maxNodes <= 0 {
-		maxNodes = 25
+	if maxNodes < 0 {
+		return nil, fmt.Errorf("maxNodes 不能为负数")
 	}
 	subDesc := "未配置代理订阅 → 仅直连"
 	if o.SubURL != "" {
@@ -212,7 +212,11 @@ func Update(o Options) (map[string]any, error) {
 				// 温路径：1h 内测过的可用节点直接复用，逐目标「抓+校验」，
 				// 不重跑全池探测（点过「测试节点」再更新就靠这层省）。
 				if o.NodeCache != nil {
-					if usable := o.NodeCache.Usable(o.SubURL, nodes); len(usable) > 0 {
+					usable := o.NodeCache.Usable(o.SubURL, nodes)
+					if maxNodes > 0 && len(usable) > maxNodes {
+						usable = usable[:maxNodes]
+					}
+					if len(usable) > 0 {
 						log(fmt.Sprintf("节点缓存命中：%d 个近期可用节点直接复用", len(usable)))
 						for i, n := range usable {
 							if len(needProxy) == 0 {
@@ -233,7 +237,7 @@ func Update(o Options) (map[string]any, error) {
 									ItemIndex: i + 1, ItemTotal: len(usable)})
 								r := proxypool.FetchURL(u, lb.Port, 15_000)
 								bump(pid, -1)
-								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
+								if r.Status == 200 && r.Error == "" && len(r.Body) > minPricingBytes && validate(pid, r.Body) {
 									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
 									delete(needProxy, pid)
 									doneSet[pid] = true
@@ -348,14 +352,14 @@ func Update(o Options) (map[string]any, error) {
 		// 对齐 Python：备份失败则中止，禁止无备份覆盖
 		if bak, err := os.ReadFile(o.ModelsPath); err != nil {
 			return nil, fmt.Errorf("读 models.json 备份源失败: %w", err)
-		} else if err := writeFileAtomic(o.ModelsPath+".bak", bak, 0o644); err != nil {
+		} else if err := writeFileAtomic(o.ModelsPath+".bak", bak, filePermission(o.ModelsPath, 0o644)); err != nil {
 			return nil, fmt.Errorf("写 models.json.bak 失败: %w", err)
 		}
 		out, err := dataset.Marshal()
 		if err != nil {
 			return nil, err
 		}
-		if err := writeFileAtomic(o.ModelsPath, out, 0o644); err != nil {
+		if err := writeFileAtomic(o.ModelsPath, out, filePermission(o.ModelsPath, 0o644)); err != nil {
 			return nil, err
 		}
 		log("已写回 models.json（备份 models.json.bak）")
@@ -364,6 +368,13 @@ func Update(o Options) (map[string]any, error) {
 	}
 	report["changed"] = changed
 	return report, nil
+}
+
+func filePermission(path string, fallback os.FileMode) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	return fallback
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
@@ -475,8 +486,13 @@ func (d *Dataset) MergeProvider(providerID string, rows []Row, today string) map
 		}
 	}
 	missing := []string{}
-	for mid := range existing {
-		if !rowIDs[mid] {
+	for _, model := range models {
+		m, ok := model.(map[string]any)
+		if !ok {
+			continue
+		}
+		mid, ok := m["id"].(string)
+		if ok && !rowIDs[mid] {
 			missing = append(missing, mid)
 		}
 	}
