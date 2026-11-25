@@ -6,8 +6,12 @@ AI 中转站价格归一化计算器：把「官方价目 × 自定义基价 × 
 
 ## 快速启动
 
+所有后端 API 均需登录。先设置 `AIPC_ADMIN_USERNAME` 和 `AIPC_ADMIN_PASSWORD`（Windows 也可使用凭据管理器目标 `aipc-server/admin`）；缺少任一项时服务拒绝启动，不提供默认密码。详见 [部署指南](docs/DEPLOYMENT.md)。
+
 ```bash
 # 方式 A：Python ≥ 3.10，零第三方依赖
+export AIPC_ADMIN_USERNAME=admin
+export AIPC_ADMIN_PASSWORD='请替换为足够长的随机密码'
 python -m server.app          # → http://127.0.0.1:8787
 npm start                     # 同上（需 Node，仅为别名）
 
@@ -17,7 +21,7 @@ cd server-go && go run ./tools/syncassets && go build -tags "with_utls with_quic
 # -tags 不可省：Reality 要 with_utls、Hysteria2 要 with_quic，缺了全部节点出站初始化失败
 ```
 
-打开 `http://127.0.0.1:8787/` 即见演示数据（约 700+ 行结果）。后端不可用时直接双击 `public/index.html` 也能跑（localStorage 存储 + 演示数据集）。
+打开 `http://127.0.0.1:8787/`，用配置的账号密码登录。令牌仅保存在当前标签页的 sessionStorage，有效期 12 小时。直接双击 `public/index.html` 仍可离线使用演示数据与 localStorage，但 API 功能不可用。
 
 ## 功能一览
 

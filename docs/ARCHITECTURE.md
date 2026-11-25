@@ -175,19 +175,21 @@ validateConfig(json) -> {ok, errors[]}                 // F10 导入校验（含
 | 方法/路径 | 行为 | 说明 |
 |---|---|---|
 | `GET /` `GET /<file>` | 服务 `public/` 静态文件 | index.html 默认；防目录穿越 |
-| `GET /api/models` | 返回 models.json | — |
-| `GET /api/config` | 返回 config.json；不存在→返回默认配置 | — |
-| `PUT /api/config` | 校验后写 config.json | 原子写（临时文件+rename） |
-| `GET /api/fx` | `{rate, source, fetchedAt, cached}` | `data/fx-cache.json` 24h 缓存 |
-| `GET /api/nodes` | v2rayN 候选节点清单（脱敏：id/名称/类型/延迟） | 不含任何凭据字段 |
-| `POST /api/nodes/test` | 节点连通性探测 job（1h 结果缓存，`force:true` 强制重测） | `{jobId}` → report `{total, probed, usable, results, cached}` |
-| `POST /api/pricing/update` | 后台跑 `fetcher.update` → `{jobId}` | body: `{providers?, maxNodes?}` |
-| `GET /api/jobs/<id>` | `{status, report, log, progress, startedAt}` | 内存任务表；progress 契约见 DUAL_IMPLEMENTATION §2 |
-| `POST /api/shutdown` | 先回 `{ok,shutdown:true}` 再延时停机 | 前端「⏻ 关闭服务」按钮 |
+| `POST /api/auth/login` | `{username,password}` → `{token,expiresAt,username}` | 免鉴权；每客户端 15 分钟最多 5 次失败 |
+| `POST /api/auth/logout` | 注销当前 Bearer token | 需鉴权 |
+| `GET /api/models` | 返回 models.json | 需鉴权 |
+| `GET /api/config` | 返回 config.json；不存在→返回默认配置 | 需鉴权 |
+| `PUT /api/config` | 校验后写 config.json | 需鉴权；JSON 对象、≤2MB、代理 URL 校验、原子写 |
+| `GET /api/fx` | `{rate, source, fetchedAt, cached}` | 需鉴权；`data/fx-cache.json` 24h 缓存 |
+| `GET /api/nodes` | v2rayN 候选节点清单（脱敏：id/名称/类型/延迟） | 需鉴权；不含任何凭据字段 |
+| `POST /api/nodes/test` | 节点连通性探测 job（1h 结果缓存，`force:true` 强制重测） | 需鉴权；`{jobId}` → report `{total, probed, usable, results, cached}` |
+| `POST /api/pricing/update` | 后台跑 `fetcher.update` → `{jobId}` | 需鉴权；body: `{providers?, maxNodes?}` |
+| `GET /api/jobs/<id>` | `{status, report, log, progress, startedAt}` | 需鉴权；内存任务表；progress 契约见 DUAL_IMPLEMENTATION §2 |
+| `POST /api/shutdown` | 先回 `{ok,shutdown:true}` 再延时停机 | 需鉴权；运行中有任务时返回 409 |
 
 价目更新合并规则：仅更新厂商 `tiers`/`contextWindow`/`status`/`fetchedAt`/`checkedAt`；源中新增模型以 `notes:"自动更新新增，请人工核对"` 入库；官方标记 `retired` 的不入库；源中消失的数据集模型只报告 `missingInSource` 不自动删除；写回前备份 `models.json.bak`。`config.json` 永不被更新流程修改。
 
-错误格式：`{ "error": "code", "message": "…", "details": [...] }`，4xx 校验 / 5xx 存储与上游。
+除登录、OPTIONS 与静态资源外，所有 `/api/` 端点要求 `Authorization: Bearer <token>`。token 为 32 字节随机值，服务端仅保存 SHA-256 摘要，有效期 12 小时；前端只放 sessionStorage，不写入 localStorage/config/日志。会话与登录限流均为进程内状态，重启即失效。错误格式：`{ "error": "说明" }`，4xx 校验/鉴权 / 5xx 存储与上游。
 
 ## 5. 汇率策略
 
@@ -204,13 +206,16 @@ validateConfig(json) -> {ok, errors[]}                 // F10 导入校验（含
 
 ## 7. 安全与健壮性
 
-- 本地工具假设受信用户；不做鉴权（绑定 `127.0.0.1` 默认，文档说明如需局域网访问自行放开）。
+- 默认绑定 `127.0.0.1`；所有后端 API 有单管理员 Bearer 鉴权，CORS 按用户要求保持 `*`，不以 CORS 作为安全边界。公网部署必须启用 HTTPS。
+- Linux/macOS 凭据来自 `AIPC_ADMIN_USERNAME`/`AIPC_ADMIN_PASSWORD`；Windows 在两者均未设置时读取凭据管理器 `aipc-server/admin`，部分环境变量配置会拒绝启动。无默认密码，`.env` 不自动加载且禁止提交。
+- 登录每客户端 15 分钟最多 5 次失败；API 请求体 ≤2MB，配置写原子化；价目更新串行化；停机先拒绝新任务并等待已登记任务。
+- 订阅 URL 前端与服务端双重校验：仅完整 http/https、有效 host/端口、无空白、≤4096 字节；非法请求不触发网络访问。
 - 输入全走 `validateConfig` 白名单校验（类型、范围、tiers 升序、id 白名单）；不执行任何用户 JSON 中的代码；渲染一律 `textContent`（无 innerHTML 注入面）。
 - 上游请求 5s 超时；写文件原子操作；不记录敏感信息（配置中无密钥字段，文档明确不存 API Key）。
 
 ## 8. 部署/运行
 
-- 开发：`python -m server.app --port 8787`（或 `npm start`）→ http://127.0.0.1:8787。
+- 开发：`python -m server.app --port 8787`（或 `npm start`）→ http://127.0.0.1:8787；先配置管理员凭据环境变量。
 - 价目更新：`python -m server.fetcher [--providers xai,zai] [--max-nodes N] [--dry-run]`（或 `npm run update-pricing`）；节点探测单独跑：`python -m server.nodepool [N]`。
 - 无构建产物；git clone + python 即可跑后端；前端亦可直接打开 `public/index.html`（file:// 下降级 localStorage，汇率自动模式不可用需手动）。
 - 前置条件：价目更新的节点池功能需要本机已安装 v2rayN（读 `%LOCALAPPDATA%/v2rayN` 的只读节点库与 bin/ 下 xray、sing-box）；无 v2rayN 时仍可直连抓取与人工核对。
@@ -273,7 +278,7 @@ Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会�
 
 ### 10.5 与 Python 版的行为差异（有意）
 
-- `PUT /api/config`：两版均「校验靠前端 validateConfig，服务端原子写透传」——行为一致，无服务端 schema 校验（本工具本地/VPS 自用前提）。
+- `PUT /api/config`：两版均校验 JSON 对象与 proxySubscription URL（允许空）；其余 schema 仍由前端 validateConfig 负责，写回原子化。
 - `/api/nodes`：节点来源不同（订阅 vs v2rayN），见 10.2。
 - 监听地址：Go `--host` 默认 127.0.0.1 与 Python 一致；nginx 同机反代无需放开。
 - Go 版二进制 ~55MB（内嵌 sing-box，含 uTLS+QUIC tags），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build -tags "with_utls with_quic"` 直接产物。

@@ -14,7 +14,7 @@
 | 启动后端+前端 | `npm start` 即 `python -m server.app --port 8787` | 已实现 |
 | 官方价目更新 | `npm run update-pricing` 即 `python -m server.fetcher [--providers …] [--max-nodes N] [--dry-run]` | 已实现 |
 | 节点池探测 | `python -m server.nodepool [节点数]` | 已实现 |
-| 单元测试 | `npm test` 即 `node --test tests/` | 待实现 |
+| 单元测试 | `npm test`：Node 自动发现测试 + Python unittest | URL 校验、鉴权、原子写、并发与 API 回归已覆盖；计算核心用例仍待补 |
 | 语法自检 | `python -m compileall server`、`node --check public/calc.js` | 部分可用 |
 | 纯前端打开 | 直接双击 `public/index.html` | 待实现 |
 
