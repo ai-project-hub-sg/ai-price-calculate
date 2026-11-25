@@ -603,7 +603,9 @@ func TestJobInputValidation(t *testing.T) {
 	}{
 		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":"25"}`},
 		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":-1}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":0}`},
 		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":1.5}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":25.1}`},
 		{"/api/pricing/update", `{"providers":"openai"}`},
 		{"/api/pricing/update", `{"providers":["openai",7]}`},
 		{"/api/pricing/update", `{"maxNodes":false}`},
@@ -618,6 +620,36 @@ func TestJobInputValidation(t *testing.T) {
 	}
 	if got := jobCount(server); got != 0 {
 		t.Fatalf("invalid requests started %d jobs", got)
+	}
+}
+
+// parseMaxNodes 整数值语义：25.0 与 25 同义（JSON 数字到 Go 皆是 float64），
+// 缺省/null → 999（实际等同全部）；0/负数/非整数值/非数字拒绝。
+// 是「整数值」而非「允许浮点」——没有 25.1 个节点。
+func TestParseMaxNodes(t *testing.T) {
+	valid := []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"缺省", map[string]any{}, 999},
+		{"null", map[string]any{"maxNodes": nil}, 999},
+		{"整数", map[string]any{"maxNodes": float64(7)}, 7},
+		{"整数值浮点", map[string]any{"maxNodes": float64(25.0)}, 25},
+	}
+	for _, c := range valid {
+		got, err := parseMaxNodes(c.body)
+		if err != nil || got != c.want {
+			t.Errorf("%s: parseMaxNodes = %d, %v; want %d", c.name, got, err, c.want)
+		}
+	}
+	invalid := []any{float64(0), float64(-5), float64(25.1), "25", true}
+	for _, v := range invalid {
+		if _, err := parseMaxNodes(map[string]any{"maxNodes": v}); err == nil {
+			t.Errorf("maxNodes=%v 应报错", v)
+		} else if !strings.Contains(err.Error(), "999") {
+			t.Errorf("maxNodes=%v 报错应说明正确输入（缺省 999）: %s", v, err.Error())
+		}
 	}
 }
 

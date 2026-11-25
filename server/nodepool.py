@@ -335,7 +335,7 @@ def probe_node(node: Node, urls: dict[str, str], timeout: float = 8.0,
     return out
 
 
-def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
+def find_working_proxy(urls: dict[str, str], max_nodes: int = 999,
                        workers: int = 4, timeout: float = 8.0,
                        db_path: str = DB_PATH, validate=None,
                        on_progress=None) -> dict:
@@ -349,7 +349,11 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
     注意：传给 probe_node 的必须是 dict(pending) 快照——live dict 会在
     兄弟线程迭代时 pop 导致 RuntimeError。
     """
-    nodes = _load_candidates(db_path)[:max_nodes]
+    # 上限语义与其余三条路径一致：非正整数不封顶（API 层已拒绝 0/负数，
+    # 此处只是库层语义统一，防止内部调用走上 nodes[:0]=空 的岔路）
+    nodes = _load_candidates(db_path)
+    if max_nodes > 0:
+        nodes = nodes[:max_nodes]
     pending = dict(urls)
     winners: dict[str, dict] = {}
     report = []
@@ -452,7 +456,7 @@ def find_working_proxy(urls: dict[str, str], max_nodes: int = 30,
 # "target","won"}=胜出瞬间；{"tested","pending"}=批次完成。
 
 
-def test_nodes(nodes: list[Node], max_nodes: int = 25, workers: int = 4,
+def test_nodes(nodes: list[Node], max_nodes: int = 999, workers: int = 4,
                timeout: float = 10.0, on_progress=None) -> list[dict]:
     """连通性探测（对应 Go TestNodes）：每节点起本地端口拉一次 PROBE_URL，
     2xx 判可用。结果写入进程内缓存：find_working 温路径复用 +

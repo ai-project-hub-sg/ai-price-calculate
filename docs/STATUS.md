@@ -6,12 +6,12 @@
 
 | 字段 | 当前值 |
 |---|---|
-| 当前阶段/状态 | 实现/联调 —— 独立审查修复位于 `fix/go-port-review-fixes`（基线 `feat/go-port@83b6c06`），本地验证与 [CI run #10](https://github.com/ai-project-hub-sg/ai-price-calculate/actions/runs/45609331482) 全绿，**待用户审核；未合并、未申请 PR** |
+| 当前阶段/状态 | 实现/联调 —— `fix/go-port-review-fixes`（基线 `feat/go-port@83b6c06`）：CR-003 审查修复 + CR-004 补完（胜出门槛、maxNodes 语义、数字写回、流程规则），**待用户审核；未合并、未申请 PR** |
 | 本阶段允许修改 | 全仓；对已批准行为/数据/API/部署的实质变更先建 `docs/changes/CR-*.md` |
-| 审核产物与版本 | `docs/changes/CR-003-go-port-review-fixes.md`（approved for implementation）；修复代码 `1d33583`，分支 HEAD `9f46f75`，CI run #10 全绿 |
-| 最近明确批准 | 用户于 2026-11-25 授权从最新 `go-port` 开独立分支、撰写需求与方案、修复并推送触发 CI；明确要求不得直接合并 `go-port`，由用户审核合并。早期线框与 CR-002 批准继续有效。 |
+| 审核产物与版本 | `docs/changes/CR-003-go-port-review-fixes.md` + `docs/changes/CR-004-go-port-review-fixes-followup.md`（均 approved for implementation） |
+| 最近明确批准 | 用户于 2026-11-25 逐条确认 CR-004 修复方案 v3（含 maxNodes 999 缺省、双端 canonical 键序、CI 记录规则、作者一致性规则）；合并需二次授权。早期线框与 CR-002/CR-003 批准继续有效。 |
 | 未决问题/风险 | R1 价目时效（F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认；登录后完整 UI、Windows 凭据管理器真实读取、Linux VPS/systemd/nginx 与真实订阅端到端未验证；`origin/fix/go-port-hardening` 远端分支处置待定 |
-| 下一阶段及进入条件 | 用户审核 `fix/go-port-review-fixes` 的 diff、CI 与人工验收结果后自行合并 `feat/go-port`；后续 PR `main` 与部署需另行授权 |
+| 下一阶段及进入条件 | 用户审核后授权 squash 合并 `feat/go-port`（作者身份按 AGENTS.md 一致性规则）；后续 PR `main` 与部署需另行授权 |
 
 不得将文件存在、自评通过或用户沉默当作批准。批准后更新本表；产物实质变更需确认原批准是否适用。
 
@@ -21,10 +21,11 @@
 
 | 命令 | 最近验证 |
 |---|---|
-| 隔离 Python/Go 鉴权 API 冒烟 | ✅ 2026-11-25 本机实测：静态页、未登录 401、登录、models、config 写入/回读、非法 JSON 400、退出后 401 全通过；使用测试凭据与临时数据目录 |
-| `npm test` | ✅ 2026-11-25：Node 4 项 + Python unittest 45 项全过 |
-| Go 构建（syncassets + with_utls with_quic） | ✅ 2026-11-25：Windows 约 53MB、Linux amd64 约 54MB；embed 与 `public/` 零 diff |
-| `go test` / `-race` / `-tags with_utls with_quic` / `go vet` | ✅ 2026-11-25 在 `fix/go-port-review-fixes` 全部通过，含 PBKDF2 对拍向量与新增回归 |
+| 隔离 Python/Go 鉴权 API 冒烟 | ✅ 2026-11-25 本机实测（CR-003 阶段）：静态页、未登录 401、登录、models、config 写入/回读、非法 JSON 400、退出后 401 全通过；使用测试凭据与临时数据目录 |
+| `npm test` | ✅ 2026-11-25（CR-004 代码状态）：Node 4 项 + Python unittest 56 项全过 |
+| Go 构建（syncassets + with_utls with_quic） | ✅ 2026-11-25（CR-004）：Windows 54.9MB、Linux amd64 56.2MB；embed 与 `public/` 零 diff |
+| `go test` / `-race` / `-tags with_utls with_quic` / `go vet` | ✅ 2026-11-25（CR-004）全部通过，含 PBKDF2 对拍向量与 merge 写回逐字节对拍（`merge_expected_file.json`） |
+| 前端语法检查 + `python -m compileall` | ✅ 2026-11-25（CR-004）：3 个 JS 文件 + 1 个 inline script、server/ 编译全通过 |
 | Linux amd64 交叉编译 | ✅ 2026-11-25 本机构建通过；Linux 目标机实跑未验证 |
 | `npm run update-pricing` / `python -m server.nodepool [N]` | 历史版本已实测；本轮未访问真实订阅或运行价目更新，不能代替目标环境验收 |
 

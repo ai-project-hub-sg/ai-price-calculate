@@ -74,3 +74,36 @@ func TestParsesEmptyPredicate(t *testing.T) {
 		t.Error("解析 panic 不应被判为解析空")
 	}
 }
+
+// 胜出校验字节门槛（E1 回归）：小 body 即使 200/可解析也不得胜出——
+// 否则厂商被移出待决清单后又被最终门槛丢弃，既不合并也不在 unreachable。
+func TestValidWinnerBodySizeGate(t *testing.T) {
+	md, err := os.ReadFile(filepath.Join("testdata", "ds.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(md) <= minPricingBytes {
+		t.Fatalf("ds.md fixture 应大于门槛：%d", len(md))
+	}
+	small := make([]byte, minPricingBytes-100)
+	for i := range small {
+		small[i] = 'x'
+	}
+	cases := []struct {
+		name string
+		pid  string
+		body []byte
+		want bool
+	}{
+		{"无解析器源小 body（moonshot 地区限制页场景）", "moonshot", small, false},
+		{"无解析器源大 body", "moonshot", append(small, make([]byte, 200)...), true},
+		{"有解析器源小 body（字节门槛先于解析）", "deepseek", small, false},
+		{"有解析器源真实价目页", "deepseek", md, true},
+		{"有解析器源大而不可解析", "deepseek", append(small, make([]byte, 2000)...), false},
+	}
+	for _, c := range cases {
+		if got := validWinnerBody(c.pid, c.body); got != c.want {
+			t.Errorf("%s: validWinnerBody = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

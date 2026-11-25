@@ -25,13 +25,13 @@
 1. **HTTP 端点集合与响应形状**：`/api/models` `/api/config`(GET/PUT) `/api/fx` `/api/nodes` `/api/nodes/test`(POST) `/api/pricing/update` `/api/jobs/<id>` `/api/shutdown`(POST)；错误 `{error: "..."}` 字段名一致。job 对象含 `progress`（结构化进度：phase/item/itemIndex/itemTotal/targets/done/current/startedAt——`done`=已解决厂家 id 列表，`current`=在飞厂家 id 集合）与 `startedAt`（job 创建 epoch ms）——两边都产出，前端进度卡依赖此契约。
 2. **价目解析**：每个 SOURCES 源对同一 .md 输入产出相同行集（id/status/contextWindow/tiers/notes/officialUpdatedAt）。
 3. **合并语义**：updated/added/skippedRetired/missingInSource 四列表含义与空值形状（`[]` 不是 `null`）；`retired` 不入库；新增行补 `status=active`/`fetchedAt`/`officialUpdatedAt=null`/`notes=自动更新新增，请人工核对`；`checkedAt` 必写。
-4. **models.json 写回**：缩进 2 空格、UTF-8 原文不转义、数字十进制无科学计数法、保留文件换行风格、**未动数据零 diff**。
+4. **models.json 写回**：缩进 2 空格、UTF-8 原文不转义、保留文件换行风格、**未动数据零 diff**；数字按 CPython repr 规则（integral float 补 `.0`、极端值科学计数法两位补零，Go 端靠类型保留解码区分 int/float）；**双端同 canonical 键序**（CR-004 起，见 ARCHITECTURE §10.4），Go 写回与 Python 写回逐字节对拍（`merge_expected_file.json`）。
 5. **config.json**：不存在→默认（API 契约）；损坏→500；PUT 要求非空 JSON 对象、≤2MB、proxySubscription 非空时 strip 后校验 http/https 格式并**存规范化值**（含 `body.url` 同规则，非字符串值一律 400）；URL 上限统一为 4096 UTF-8 字节；并发写加锁并原子写入；其余 schema 由前端 validateConfig 负责。
 6. **鉴权**：login/logout 契约一致；除登录、OPTIONS、静态资源外全部 API 要求 Bearer token；12h TTL、5 次失败/15min（限流键=TCP 对端 IP，反代/本机部署下所有来源共享一桶；429 先于凭据校验且被限尝试不计数；有意不信 X-Forwarded-For）；CORS 均为 `*`；凭据来源按平台约定，无默认密码；密码校验 PBKDF2-HMAC-SHA256 120k 迭代两端一致（Go 测试含 Python 对拍向量）。Go 的 PBKDF2 在会话锁外计算，过期失败记录全局清理。
 7. **汇率**：`rates.CNY` 必须是有限正数；无效缓存不复用、无效上游返回 502 且不写缓存；`GET /api/fx?refresh=1` 两端都绕过 24h 缓存，前端仅手动刷新传该参数。
-8. **回退链**：直连 → 节点池（有配置时）→ 报错；`bytes > MIN_USEFUL_BODY(500)` 且**该源解析器能解出非空行**才视为抓到（直连、冷路径与温缓存路径同标准）；胜出者复用探测时校验过的响应体，不二次抓取；订阅/直连均不走环境变量代理。温缓存路径同样遵守 `MaxNodes`（0=全部）。
+8. **回退链**：直连 → 节点池（有配置时）→ 报错；`bytes > MIN_USEFUL_BODY(500)` 且**该源解析器能解出非空行**才视为抓到（直连、冷路径与温缓存路径同标准）；胜出者复用探测时校验过的响应体，不二次抓取；订阅/直连均不走环境变量代理。温缓存路径同样遵守 `MaxNodes`。
 9. **fetch URL 集合**：`SOURCES`/`Sources` 的 8 个 URL、顺序（report/unreachable 排序稳定性）、moonshot 无解析器→manual-check。
-10. **后台任务**：价目更新串行化；`providers` 存在时必须为字符串数组，`maxNodes` 必须为非负整数，非法输入 400 且不创建 job；job 响应在锁内快照；shutdown 拒绝运行中任务，信号停机先拒绝新任务再等待；Go 业务 goroutine panic 转为 job/节点 error。
+10. **后台任务**：价目更新串行化；`providers` 存在时必须为字符串数组，`maxNodes` 必须是正整数值（整数值浮点 `25.0` 接受、`25.1` 拒绝），缺省 999 等同全部，非法输入 400 且不创建 job、报错说明正确输入；job 响应在锁内快照；shutdown 拒绝运行中任务，信号停机先拒绝新任务再等待；Go 业务 goroutine panic 转为 job/节点 error。
 
 ## 3. 已知坑（踩过的，防再踩）
 
@@ -40,9 +40,9 @@
 | 正则行为漂移 | Python `re.match` 隐式行首锚定 ≠ Go `MatchString` 全局搜索 | 字面量统一 `re.search`/`MatchString` + 显式 `^`、`(?i)`；逐字一致 |
 | 静默走代理 | urllib/http.DefaultTransport 都读 `HTTPS_PROXY` | 两边都用显式空代理 Transport；新增任何 HTTP 客户端代码同样处理 |
 | `null` vs `[]` | Go nil slice → `null`，Python `[]` | 列表字段永远 `[]string{}` 初始化，不依赖零值 |
-| 数字变科学计数法 | Go `encoding/json` float64 策略 | 自写 canonical marshal：float 使用 `strconv.FormatFloat(..., 'f', -1, ...)`，所有数字十进制输出 |
+| 数字格式失真 | Go `encoding/json` 全解 float64，丢失 int/float 区分——只看值的格式化数学上必然错一侧（`64000`→`64000.0` 或 `2.0`→`2`） | 类型保留解码（UseNumber 按 Python 词法分流 int64/float64）+ CPython repr 写回（`pyFloatRepr`）；极端值科学计数法与 Python 一致而非禁用（Python 对 `1e-7` 写 `1e-07`） |
 | HTML 转义污染 | Go `json.Marshal` 默认转义 `<>&` | `writeJSONString` 手写（对齐 `ensure_ascii=False`） |
-| 键序漂移 | Python dict 保序 vs Go map 乱序 | raw 直通 + dirty 子树 canonical；见 ARCHITECTURE §10.4 |
+| 键序漂移 | Python dict 保序 vs Go map 乱序；且各解析器构造的 tier 键序异质（deepseek `input/cacheRead/output` vs xai `input/output/cacheRead`），保留插入序本身就是异质的 | 双端统一 canonical 键序（`fetcher.canonicalize` 镜像 Go `fieldOrders`）+ Go raw 直通 dirty 子树 canonical；一次性归一化后永久稳定；见 ARCHITECTURE §10.4 |
 | 换行翻转 | Python `open("w")` 按 OS 写 CRLF/LF | `Dataset.eol` 检测并保留输入换行风格 |
 | fixture 过期 | .md 样本是某时刻快照 | 源页改版→更新 fixture + 重跑 gen_fixtures.py；真实源结构变了≠测试错 |
 | 200 墙页当成功 | 地区限制/反爬页也是 200+大字节（实测 anthropic 311KB blocked 页） | 直连与节点胜出都做「解析非空」校验；节点胜出复用探测 body（重抓有 CDN 抖动窗口） |

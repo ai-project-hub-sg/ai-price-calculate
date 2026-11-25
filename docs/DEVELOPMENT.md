@@ -53,3 +53,8 @@
 - 默认分支 `main`；短期 `feat/…`、`fix/…` 分支 + 独立 PR/squash（GitHub Flow）。
 - 不提交运行产物与系统文件（见 .gitignore）；提交前看 staged diff。
 - commit/push/merge 按当次用户授权执行，不默认获得权限。
+
+## 7. 验证记录约定
+
+- `docs/STATUS.md`「命令验证状态」只记录**本地实测**的命令结果（npm test、go test、构建等），每行标注对应代码状态；纯文档提交不改变代码内容，继承最近代码状态的验证结果。
+- **CI 结果永不入仓库**（AGENTS.md 顶部 CI 记录约定）：绿不记（沉默即正常）；红当 bug 修，失败原因可作为缺陷追踪记录，转绿即关闭。push 后须等 CI 真正完成（race 检测分钟级）再判断，进行中不下结论。

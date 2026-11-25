@@ -9,6 +9,27 @@ import (
 	"testing"
 )
 
+// decodeFixtureRows 按真实解析产物的类型解码 fixture 行：upToTokens 等
+// 整数词法必须是 int64（真实解析里 tokens() 返回 int），价格保持 float64。
+// 直接 json.Unmarshal 会把整数解成 float64，写回时 128000 变 128000.0。
+func decodeFixtureRows(t *testing.T, path string) []Row {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var rows []Row
+	if err := dec.Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		normalizeNumbers(row)
+	}
+	return rows
+}
+
 // 合并一致性：Go MergeProvider 在 merge_input.json 上的结果必须与
 // Python merge_provider 的基准（merge_expected.json，gen_fixtures.py 生成）一致。
 // 覆盖 updated/added/missingInSource 三分支；未动 provider 需原字节直通。
@@ -17,14 +38,7 @@ func TestMergeParityWithPython(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rowsRaw, err := os.ReadFile(filepath.Join("testdata", "ds.expected.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rows []Row
-	if err := json.Unmarshal(rowsRaw, &rows); err != nil {
-		t.Fatal(err)
-	}
+	rows := decodeFixtureRows(t, filepath.Join("testdata", "ds.expected.json"))
 	res := ds.MergeProvider("deepseek", rows, "2026-11-24")
 
 	expRaw, err := os.ReadFile(filepath.Join("testdata", "merge_expected.json"))
@@ -83,6 +97,38 @@ func TestMergeParityWithPython(t *testing.T) {
 	// 未动的 xai 子树原字节直通（零 diff 保证）
 	if !bytes.Contains(out, ds.rawProv["xai"]) {
 		t.Error("未合并的 xai provider 未原字节直通")
+	}
+}
+
+// 字节级写回对拍（数字格式/键序/缩进的严格守门）：Go merge 后写回输出
+// 必须逐字节等于 Python 参考实现的写回字节（merge_expected_file.json，
+// gen_fixtures.py 生成）。语义比较看不出 64000 vs 64000.0——正是这类
+// 分歧曾穿过语义测试进入 CR-003。fixture 由 testdata/.gitattributes
+// 固定 LF 检出，跨平台确定性。
+func TestMergeWritebackByteParityWithPython(t *testing.T) {
+	ds, err := LoadDataset(filepath.Join("testdata", "merge_input.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := decodeFixtureRows(t, filepath.Join("testdata", "ds.expected.json"))
+	ds.MergeProvider("deepseek", rows, "2026-11-24")
+	out, err := ds.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "merge_expected_file.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, want) {
+		// 定位首个分歧行，便于一眼看到是数字/键序/缩进哪类问题
+		gl, wl := bytes.Split(out, []byte("\n")), bytes.Split(want, []byte("\n"))
+		for i := 0; i < len(gl) && i < len(wl); i++ {
+			if !bytes.Equal(gl[i], wl[i]) {
+				t.Fatalf("写回字节分歧（行 %d）:\n got=%q\nwant=%q", i+1, gl[i], wl[i])
+			}
+		}
+		t.Fatalf("写回字节长度分歧: got %d 行, want %d 行", len(gl), len(wl))
 	}
 }
 

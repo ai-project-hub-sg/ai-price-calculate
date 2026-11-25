@@ -30,7 +30,7 @@ type Progress struct {
 
 type Options struct {
 	Providers  []string // 空 = 全部源
-	MaxNodes   int      // 探测节点上限，默认 25
+	MaxNodes   int      // 探测节点上限；0 = 缺省 999（实际等同全部），负数报错
 	SubURL     string   // 代理订阅地址（空 = 仅直连）
 	ModelsPath string
 	DryRun     bool
@@ -67,6 +67,9 @@ func Update(o Options) (map[string]any, error) {
 	maxNodes := o.MaxNodes
 	if maxNodes < 0 {
 		return nil, fmt.Errorf("maxNodes 不能为负数")
+	}
+	if maxNodes == 0 {
+		maxNodes = 999 // 零值 = 缺省：与 API 层 absent 语义一致（实际等同全部）
 	}
 	subDesc := "未配置代理订阅 → 仅直连"
 	if o.SubURL != "" {
@@ -198,15 +201,7 @@ func Update(o Options) (map[string]any, error) {
 				}
 			}
 			if len(nodes) > 0 {
-				// 胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也返回 200。
-				validate := func(pid string, body []byte) bool {
-					src := Sources[pid]
-					if src.Parse == nil {
-						return true
-					}
-					rows, err := safeParse(src.Parse, string(body))
-					return err == nil && len(rows) > 0
-				}
+				validate := validWinnerBody
 				winners := map[string]proxypool.Winner{}
 				probed := map[string]bool{} // 本 run 已试节点（Key），冷路径不重复
 				// 温路径：1h 内测过的可用节点直接复用，逐目标「抓+校验」，
@@ -237,7 +232,7 @@ func Update(o Options) (map[string]any, error) {
 									ItemIndex: i + 1, ItemTotal: len(usable)})
 								r := proxypool.FetchURL(u, lb.Port, 15_000)
 								bump(pid, -1)
-								if r.Status == 200 && r.Error == "" && len(r.Body) > minPricingBytes && validate(pid, r.Body) {
+								if r.Status == 200 && r.Error == "" && validate(pid, r.Body) {
 									winners[pid] = proxypool.Winner{Node: n, Label: n.Label(), Body: r.Body}
 									delete(needProxy, pid)
 									doneSet[pid] = true
@@ -400,6 +395,22 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// validWinnerBody 代理胜出校验：200 + 最小正文 + 能解析出价目行——
+// 地区限制/反爬页也返回 200，JS 空壳页只有几百 B。字节门槛必须在校验
+// 内部：否则小 body 胜出后厂商被移出待决清单，最终门槛再丢弃，落得
+// 既不合并也不在 unreachable 的三不管状态。温/冷路径共用本函数。
+func validWinnerBody(pid string, body []byte) bool {
+	if len(body) <= minPricingBytes {
+		return false
+	}
+	src := Sources[pid]
+	if src.Parse == nil {
+		return true
+	}
+	rows, err := safeParse(src.Parse, string(body))
+	return err == nil && len(rows) > 0
 }
 
 // parsesEmpty 判"页面虽返回 200/>500B 但解析不出任何价目行"——地区限制、

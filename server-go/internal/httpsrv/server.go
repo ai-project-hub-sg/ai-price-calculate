@@ -538,15 +538,31 @@ func (s *Server) WaitForJobs(ctx context.Context) error {
 	}
 }
 
+// parseMaxNodes maxNodes = 最多探测节点数，纯上限无魔法值：缺省 999
+// （实际等同全部）；接受正整数（JSON 数字到 Go 皆是 float64，整数值
+// 25.0 与 25 同义）；0/负数/非整数值/非数字报 400。注意是「整数值」
+// 而非「允许浮点」——没有 25.1 个节点。
 func parseMaxNodes(body map[string]any) (int, error) {
+	const hint = "maxNodes 必须是正整数值（≥1，如 25；缺省 999 等同全部节点）"
 	raw, exists := body["maxNodes"]
 	if !exists || raw == nil {
-		return 25, nil
+		return 999, nil
 	}
 	v, ok := raw.(float64)
-	if !ok || math.IsNaN(v) || math.IsInf(v, 0) || math.Trunc(v) != v ||
-		v < 0 || v >= float64(int(^uint(0)>>1)) {
-		return 0, errors.New("maxNodes 必须是非负整数")
+	if !ok {
+		return 0, fmt.Errorf("%s；收到 %T 类型，不是数字", hint, raw)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("%s；收到非有限数字", hint)
+	}
+	if math.Trunc(v) != v {
+		return 0, fmt.Errorf("%s；收到 %v，节点个数不能是小数", hint, v)
+	}
+	if v < 1 {
+		return 0, fmt.Errorf("%s；收到 %v，0 或负数不表示全部——要测全部请缺省或填大数", hint, v)
+	}
+	if v >= float64(int(^uint(0)>>1)) {
+		return 0, fmt.Errorf("%s；收到 %v，超出整数范围", hint, v)
 	}
 	return int(v), nil
 }

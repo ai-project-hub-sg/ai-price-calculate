@@ -332,11 +332,28 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def _max_nodes(self, body: dict) -> int | None:
-        value = body.get("maxNodes", 25)
+        """maxNodes = 最多探测节点数，纯上限无魔法值：缺省 999（实际等同
+        全部）；接受正整数与整数值浮点（25.0→25）；0/负数/非整数值/非数字
+        报 400。注意是「整数值」而非「允许浮点」——没有 25.1 个节点。"""
+        value = body.get("maxNodes", 999)
         if value is None:
-            value = 25
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            self._json({"error": "maxNodes 必须是非负整数"}, 400)
+            value = 999
+        hint = "maxNodes 必须是正整数值（≥1，如 25；缺省 999 等同全部节点）"
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            self._json({"error": f"{hint}；收到 {type(value).__name__} 类型，不是数字"}, 400)
+            return None
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                self._json({"error": f"{hint}；收到非有限数字"}, 400)
+                return None
+            if value == int(value):
+                value = int(value)  # 25.0 → 25：整数值，接受
+            else:
+                self._json({"error": f"{hint}；收到 {value}，节点个数不能是小数"}, 400)
+                return None
+        if value < 1:
+            self._json({"error": f"{hint}；收到 {value}，0 或负数不表示全部——"
+                                 "要测全部请缺省或填大数"}, 400)
             return None
         return value
 

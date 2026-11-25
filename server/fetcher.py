@@ -412,7 +412,12 @@ def merge_provider(dataset: dict, provider_id: str, rows: list[dict]) -> dict:
 # ---------------------------------------------------------------- 编排
 
 def _validate_body(pid: str, body: bytes) -> bool:
-    """节点胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也是 200。"""
+    """节点胜出校验：200 + 最小正文 + 能解析出价目行——地区限制/反爬页
+    也是 200，JS 空壳页只有几百 B。字节门槛必须在校验内部：否则小 body
+    胜出后厂商被移出待决清单，最终门槛再丢弃，落得既不合并也不在
+    unreachable 的三不管状态。"""
+    if len(body) <= MIN_USEFUL_BODY:
+        return False
     parse = SOURCES[pid]["parse"]
     if parse is None:
         return True
@@ -420,6 +425,58 @@ def _validate_body(pid: str, body: bytes) -> bool:
         return bool(parse(body.decode("utf-8", "replace")))
     except Exception:
         return False
+
+
+# canonical 键序规范（与 Go server-go/internal/fetch/marshal.go fieldOrders
+# 镜像，与 models.json meta.fields 自我声明一致）。Python 写回历史上保留
+# 插入顺序，而各解析器构造的 tier 键序异质（deepseek 是 input/cacheRead/
+# output，xai 是 input/output/cacheRead……）——双端写回要逐字节一致，
+# 必须两端都按同一规范重排。升级后首次写回会有一次性键序重排（纯顺序、
+# 内容零变化），此后永久稳定。
+_FIELD_ORDERS = {
+    "provider": ["id", "name", "currency", "source", "checkedAt",
+                 "officialUpdatedAt", "autoFetch", "autoFetchReason",
+                 "autoFetchUrl", "notes", "models"],
+    "model": ["id", "name", "contextWindow", "status", "fetchedAt",
+              "officialUpdatedAt", "offPeakRatio", "tiers", "notes",
+              "peakWindows", "peakNote"],
+    "tier": ["upToTokens", "input", "output", "cacheRead", "cacheWrites"],
+    "cacheW": ["ttl", "price"],
+    "meta": ["version", "description", "tierBasis", "fields", "disclaimer"],
+    "fields": ["upToTokens", "input", "output", "cacheRead", "cacheWrites",
+               "offPeakRatio", "fetchedAt", "officialUpdatedAt"],
+}
+
+
+def _shape_of(obj: dict) -> list[str] | None:
+    if obj.get("tierBasis") is not None or obj.get("fields") is not None:
+        return _FIELD_ORDERS["meta"]
+    if obj.get("models") is not None:
+        return _FIELD_ORDERS["provider"]
+    if obj.get("tiers") is not None:
+        return _FIELD_ORDERS["model"]
+    if obj.get("ttl") is not None and obj.get("price") is not None:
+        return _FIELD_ORDERS["cacheW"]
+    if (obj.get("input") is not None or obj.get("output") is not None
+            or obj.get("upToTokens") is not None):
+        if isinstance(obj.get("upToTokens"), str):
+            return _FIELD_ORDERS["fields"]  # meta.fields 文档表（全字符串值）
+        return _FIELD_ORDERS["tier"]
+    return None
+
+
+def canonicalize(obj):
+    """按 canonical 键序递归重排 dict（列表元素顺序不动——顺序有语义）。
+    规范内键按 _FIELD_ORDERS 序，未知键字母序排尾（与 Go orderedKeys 一致）。
+    返回新结构，不改原对象。"""
+    if isinstance(obj, dict):
+        canon = _shape_of(obj) or []
+        keys = [k for k in canon if k in obj]
+        keys += sorted(k for k in obj if k not in keys)
+        return {k: canonicalize(obj[k]) for k in keys}
+    if isinstance(obj, list):
+        return [canonicalize(x) for x in obj]
+    return obj
 
 
 def _atomic_write_json(path: str, payload: dict):
@@ -465,7 +522,7 @@ def _atomic_copy(source: str, destination: str):
                 pass
 
 
-def update(providers: list[str] | None = None, max_nodes: int = 25,
+def update(providers: list[str] | None = None, max_nodes: int = 999,
            dry_run: bool = False, log=print, progress=None) -> dict:
     """全局串行执行更新，避免并发任务各自读取旧数据集并丢失合并结果。"""
     with _UPDATE_LOCK:
@@ -473,7 +530,7 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
                        log=log, progress=progress)
 
 
-def _update(providers: list[str] | None = None, max_nodes: int = 25,
+def _update(providers: list[str] | None = None, max_nodes: int = 999,
             dry_run: bool = False, log=print, progress=None) -> dict:
     """progress(dict)：结构化进度回调（对齐 Go fetch.Progress），字段
     phase/item/itemIndex/itemTotal/done/total/pending/startedAt——前端据此渲染
@@ -603,7 +660,7 @@ def _update(providers: list[str] | None = None, max_nodes: int = 25,
     if changed and not dry_run:
         emit("merge")
         _atomic_copy(MODELS_PATH, MODELS_PATH + ".bak")
-        _atomic_write_json(MODELS_PATH, dataset)
+        _atomic_write_json(MODELS_PATH, canonicalize(dataset))
         log(f"已写回 models.json（备份 models.json.bak）")
     elif dry_run:
         log("dry-run：不写回")
@@ -614,7 +671,7 @@ def _update(providers: list[str] | None = None, max_nodes: int = 25,
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--providers", help="逗号分隔，默认全部")
-    ap.add_argument("--max-nodes", type=int, default=25)
+    ap.add_argument("--max-nodes", type=int, default=999)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     pids = a.providers.split(",") if a.providers else None
