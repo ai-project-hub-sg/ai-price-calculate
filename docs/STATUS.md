@@ -6,9 +6,9 @@
 
 | 字段 | 当前值 |
 |---|---|
-| 当前阶段/状态 | 实现/联调 —— 独立审查修复位于 `fix/go-port-review-fixes`（基线 `feat/go-port@83b6c06`），本地验证通过，**待 CI 与用户审核；未合并、未申请 PR** |
+| 当前阶段/状态 | 实现/联调 —— 独立审查修复位于 `fix/go-port-review-fixes`（基线 `feat/go-port@83b6c06`），本地验证与 [CI run #10](https://github.com/ai-project-hub-sg/ai-price-calculate/actions/runs/45609331482) 全绿，**待用户审核；未合并、未申请 PR** |
 | 本阶段允许修改 | 全仓；对已批准行为/数据/API/部署的实质变更先建 `docs/changes/CR-*.md` |
-| 审核产物与版本 | `docs/changes/CR-003-go-port-review-fixes.md`（approved for implementation）；修复代码 `1d33583`，CI 待推送（本机凭据阻塞） |
+| 审核产物与版本 | `docs/changes/CR-003-go-port-review-fixes.md`（approved for implementation）；修复代码 `1d33583`，分支 HEAD `9f46f75`，CI run #10 全绿 |
 | 最近明确批准 | 用户于 2026-11-25 授权从最新 `go-port` 开独立分支、撰写需求与方案、修复并推送触发 CI；明确要求不得直接合并 `go-port`，由用户审核合并。早期线框与 CR-002 批准继续有效。 |
 | 未决问题/风险 | R1 价目时效（F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认；登录后完整 UI、Windows 凭据管理器真实读取、Linux VPS/systemd/nginx 与真实订阅端到端未验证；`origin/fix/go-port-hardening` 远端分支处置待定 |
 | 下一阶段及进入条件 | 用户审核 `fix/go-port-review-fixes` 的 diff、CI 与人工验收结果后自行合并 `feat/go-port`；后续 PR `main` 与部署需另行授权 |

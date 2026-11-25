@@ -118,4 +118,4 @@
 - 自动测试覆盖双端 API 契约、鉴权、FX、job 校验、URI/Base64、脱敏、panic、Transport、merge/权限/数字格式与解析对拍。
 - 未读取用户真实密码、订阅或运行配置；未执行真实价目更新或节点探测。
 - 浏览器连接器此前不可用，且不得脚本化真实凭据，因此登录后 UI 全流程、Windows Credential Manager、Linux VPS 与真实订阅仍须人工验收。
-- 修复代码提交：`1d33583efbbe8ee3d5718f2a48ab6511ef35936e`。推送因本机 GitHub 凭据对话框被取消且无非交互凭据而未完成；CI run 待实际推送后补充，不得以历史绿色 CI 代替本次结果。
+- 修复代码提交：`1d33583efbbe8ee3d5718f2a48ab6511ef35936e`；分支推送提交：`9f46f750fb44f1efa5e3db5ff96fe995e669fe4b`。[CI run #10](https://github.com/ai-project-hub-sg/ai-price-calculate/actions/runs/45609331482) 对该 SHA 全绿；仅有 Node.js 20 弃用警告，无失败。
