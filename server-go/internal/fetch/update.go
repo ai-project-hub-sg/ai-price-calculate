@@ -6,6 +6,7 @@ package fetch
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -17,14 +18,14 @@ import (
 // 当前组合（节点→厂家）+ 当前项开始时间——前端据此渲染厂家徽章行与组合耗时，
 // "谁在抓/谁卡住/还剩谁"一目了然。
 type Progress struct {
-	Phase     string   `json:"phase"`              // direct|sub|warm|probe|merge
-	Item      string   `json:"item,omitempty"`     // 当前活动：direct=厂家id，节点阶段="节点 → 厂家"
-	Current   []string `json:"current"`            // 正在抓取的厂家 id 集（并发节点各抓一个，全亮）
+	Phase     string   `json:"phase"`          // direct|sub|warm|probe|merge
+	Item      string   `json:"item,omitempty"` // 当前活动：direct=厂家id，节点阶段="节点 → 厂家"
+	Current   []string `json:"current"`        // 正在抓取的厂家 id 集（并发节点各抓一个，全亮）
 	ItemIndex int      `json:"itemIndex,omitempty"`
 	ItemTotal int      `json:"itemTotal,omitempty"`
-	Targets   []string `json:"targets"`            // 全部价目源（有序）
-	Done      []string `json:"done"`               // 已解决厂家 id
-	StartedAt int64    `json:"startedAt"`          // 当前项开始 epoch ms（前端算本项耗时）
+	Targets   []string `json:"targets"`   // 全部价目源（有序）
+	Done      []string `json:"done"`      // 已解决厂家 id
+	StartedAt int64    `json:"startedAt"` // 当前项开始 epoch ms（前端算本项耗时）
 }
 
 type Options struct {
@@ -42,9 +43,18 @@ type Options struct {
 // 返回的空壳 .md 只有几百 B，低于此阈值视为未抓到（显式阈值，勿静默改）。
 const minPricingBytes = 500
 
+var updateMu sync.Mutex
+
 func Today() string { return time.Now().Format("2006-01-02") }
 
 func Update(o Options) (map[string]any, error) {
+	updateMu.Lock()
+	defer updateMu.Unlock()
+	if o.SubURL != "" {
+		if err := proxypool.ValidateSubscriptionURL(o.SubURL); err != nil {
+			return nil, err
+		}
+	}
 	log := o.Log
 	if log == nil {
 		log = func(string) {}
@@ -218,7 +228,7 @@ func Update(o Options) (map[string]any, error) {
 							for pid, u := range needProxy {
 								bump(pid, +1)
 								emit(Progress{Phase: "warm",
-									Item: n.Label() + " → " + pid,
+									Item:      n.Label() + " → " + pid,
 									ItemIndex: i + 1, ItemTotal: len(usable)})
 								r := proxypool.FetchURL(u, lb.Port, 15_000)
 								bump(pid, -1)
@@ -337,14 +347,14 @@ func Update(o Options) (map[string]any, error) {
 		// 对齐 Python：备份失败则中止，禁止无备份覆盖
 		if bak, err := os.ReadFile(o.ModelsPath); err != nil {
 			return nil, fmt.Errorf("读 models.json 备份源失败: %w", err)
-		} else if err := os.WriteFile(o.ModelsPath+".bak", bak, 0o644); err != nil {
+		} else if err := writeFileAtomic(o.ModelsPath+".bak", bak, 0o644); err != nil {
 			return nil, fmt.Errorf("写 models.json.bak 失败: %w", err)
 		}
 		out, err := dataset.Marshal()
 		if err != nil {
 			return nil, err
 		}
-		if err := os.WriteFile(o.ModelsPath, out, 0o644); err != nil {
+		if err := writeFileAtomic(o.ModelsPath, out, 0o644); err != nil {
 			return nil, err
 		}
 		log("已写回 models.json（备份 models.json.bak）")
@@ -353,6 +363,31 @@ func Update(o Options) (map[string]any, error) {
 	}
 	report["changed"] = changed
 	return report, nil
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // parsesEmpty 判"页面虽返回 200/>500B 但解析不出任何价目行"——地区限制、

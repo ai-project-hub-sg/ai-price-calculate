@@ -49,9 +49,24 @@
   .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
   .toolbar select{min-width:110px}
   mark{background:#fef08a}
+  .auth-gate{position:fixed;inset:0;background:#f5f5f4;z-index:100;display:flex;align-items:center;justify-content:center}
+  .auth-gate[hidden]{display:none}
+  .auth-card{width:340px;max-width:90vw;background:#fff;border:1px solid #d6d3d1;border-radius:8px;padding:22px;box-shadow:0 8px 40px #0002}
+  .auth-card h2{font-size:17px;margin-bottom:14px}.auth-card label{display:block;margin:10px 0}
+  .auth-card input{width:100%;margin-top:4px}.auth-card button{width:100%;margin-top:14px}
+  .auth-error{min-height:18px;color:#b91c1c;font-size:12px;margin-top:8px}
 </style>
 </head>
 <body>
+<div class="auth-gate" id="authGate" hidden>
+  <form class="auth-card" id="authForm">
+    <h2>登录 AI 价格归一化计算器</h2>
+    <label>账号<input id="authUser" type="text" autocomplete="username" required autofocus></label>
+    <label>密码<input id="authPass" type="password" autocomplete="current-password" required></label>
+    <button class="primary" id="authSubmit" type="submit">登录</button>
+    <div class="auth-error" id="authMsg" role="alert"></div>
+  </form>
+</div>
 <header>
   <h1>AI 价格归一化计算器 <small class="dim">Demo v0.31 · 76b2dd2</small></h1>
   <div class="profiles">
@@ -65,6 +80,7 @@
     <button id="demoLoad" title="补充载入演示档案（不动已有数据）">载入演示</button>
     <button id="demoClear" class="danger" title="移除全部演示档案">清空演示</button>
     <button id="srvDown" class="danger" title="关闭本地后端服务">⏻ 关闭服务</button>
+    <button id="authLogout" hidden>退出登录</button>
     <input type="file" id="importFile" accept=".json" hidden>
   </div>
 </header>
@@ -156,6 +172,7 @@
   <div class="drawer" id="drawer" hidden></div>
   <div id="picker" hidden style="position:fixed;top:8%;left:50%;transform:translateX(-50%);width:520px;max-width:94vw;max-height:80vh;overflow-y:auto;background:#fff;border:1px solid #57534e;border-radius:8px;padding:14px;box-shadow:0 8px 40px #0005;z-index:25"></div>
 </main>
+<script src="validation.js"></script>
 <script src="calc.js"></script>
 <script src="demo-config.js"></script>
 <script>
@@ -171,11 +188,54 @@ const h = (tag, attrs, ...kids) => { const e = document.createElement(tag);
 const fmt = (n,cur) => n==null?'—':(cur==='USD'?'$':'¥')+(+n).toPrecision(4).replace(/\.?0+$/,'');
 const fmtC = n => n==null?'—':'¥'+(+n).toFixed(2);
 const esc = s => String(s??'');
+const SESSION_KEY='aipc.sessionToken';
+class ApiError extends Error{constructor(status,message){super(message);this.status=status;}}
+function getSessionToken(){try{return sessionStorage.getItem(SESSION_KEY)||'';}catch(e){return '';}}
+function saveSessionToken(token){try{sessionStorage.setItem(SESSION_KEY,token);}catch(e){throw new Error('浏览器无法保存登录状态');}}
+function clearSessionToken(){try{sessionStorage.removeItem(SESSION_KEY);}catch(e){}}
+function showLogin(message=''){
+  clearSessionToken();$('#authGate').hidden=false;$('#authMsg').textContent=message;
+  document.querySelector('main').inert=true;document.querySelector('header').inert=true;
+  $('#authPass').value='';setTimeout(()=>$('#authUser').focus(),0);
+}
+function hideLogin(){$('#authGate').hidden=true;$('#authMsg').textContent='';
+  document.querySelector('main').inert=false;document.querySelector('header').inert=false;}
+function bindAuth(){
+  $('#authForm').onsubmit=async e=>{
+    e.preventDefault();const btn=$('#authSubmit'),msg=$('#authMsg');btn.disabled=true;msg.textContent='';
+    try{
+      const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({username:$('#authUser').value,password:$('#authPass').value})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+      if(!j.token)throw new Error('登录响应缺少令牌');
+      saveSessionToken(j.token);location.reload();
+    }catch(err){msg.textContent='登录失败: '+err.message;btn.disabled=false;}
+  };
+}
+async function api(path,options={}){
+  const headers=new Headers(options.headers||{}),token=getSessionToken();
+  if(token)headers.set('Authorization','Bearer '+token);
+  if(options.body!=null&&typeof options.body==='string'&&!headers.has('Content-Type'))
+    headers.set('Content-Type','application/json');
+  let r;
+  try{r=await fetch(path,{...options,headers});}
+  catch(e){throw new ApiError(0,'后端不可达');}
+  if(r.status===401&&path!=='/api/auth/login'){
+    showLogin(token?'登录已过期，请重新登录。':'请先登录。');throw new ApiError(401,'需要登录');
+  }
+  return r;
+}
+async function apiJSON(path,options){
+  const r=await api(path,options),j=await r.json().catch(()=>null);
+  if(!r.ok||!j||j.error)throw new ApiError(r.status,j?.error||('HTTP '+r.status));
+  return j;
+}
 
 // ---------------- 状态 ----------------
 const LS_CFG='aipc.config', LS_KEY='aipc.models';
 let state = { config:null, dataset:null, rate:7.10, rateInfo:'手动兜底', backend:false,
-              tab:'result', sort:{key:'priceStation',dir:1}, filters:{}, editing:null };
+              tab:'result', sort:{key:'priceStation',dir:1}, filters:{}, editing:null, jobRunning:false };
 
 // file:// 兜底小数据集（后端在时会被 /api/models 全量替换）
 const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
@@ -191,21 +251,23 @@ const FALLBACK_DATA = {meta:{version:'fallback'},providers:[
   {id:'deepseek-v4-pro',name:'DeepSeek V4 Pro',status:'active',offPeakRatio:0.5,tiers:[{upToTokens:null,input:1.32,output:3.96,cacheRead:0.044}]}]}]};
 
 async function boot(){
+  bindAuth();
   window.addEventListener('error',e=>showBanner('JS 错误: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno));
   window.addEventListener('unhandledrejection',e=>showBanner('异步错误: '+(e.reason&&e.reason.message||e.reason)));
   try { const d=JSON.parse(localStorage.getItem(LS_KEY)||'null'); if(d) state.dataset=d; } catch(e){}
   try { const c=JSON.parse(localStorage.getItem(LS_CFG)||'null'); if(c&&c.profiles&&c.profiles.length) state.config=c; } catch(e){}
   try {
-    const [m,c]=await Promise.all([fetch('/api/models'),fetch('/api/config')]);
-    if(m.ok){const d=await m.json();state.backend=true;
-      if(d&&Array.isArray(d.providers)){state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));}
-      else if(!(state.dataset&&Array.isArray(state.dataset.providers)))
-        showBanner('后端可达但 data/models.json 缺失/为空：已载入内置样本；价目更新后可恢复全量');}
-    if(c.ok){const cc=await c.json();if(cc&&cc.profiles&&cc.profiles.length)state.config=cc;}
-  } catch(e){}
+    const [d,cc]=await Promise.all([apiJSON('/api/models'),apiJSON('/api/config')]);
+    state.backend=true;
+    if(Array.isArray(d.providers)){state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));}
+    else throw new Error('价目响应缺少 providers');
+    if(Array.isArray(cc.profiles)&&cc.profiles.length)state.config=cc;
+  } catch(e){if(!(e instanceof ApiError)||e.status!==401)console.warn('后端数据加载失败:',e.message);}
   if(!state.dataset) state.dataset=FALLBACK_DATA;
   if(!state.config) state.config=window.DEMO_CONFIG?JSON.parse(JSON.stringify(window.DEMO_CONFIG)):C.defaultConfig();
-  if(!state.backend) showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
+  if(!state.backend&&$('#authGate').hidden)
+    showBanner('后端不可达：已启用内置小数据集+localStorage 降级（经 python -m server.app 启动可获全量价目与持久化）');
+  $('#authLogout').hidden=!getSessionToken();
   await loadFx();
   bindGlobal(); render();
 }
@@ -216,12 +278,13 @@ let saveT=null;
 function persist(){
   localStorage.setItem(LS_CFG,JSON.stringify(state.config));
   clearTimeout(saveT);
-  if(state.backend) saveT=setTimeout(()=>fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(state.config)}).catch(()=>{}),400);
+  if(state.backend) saveT=setTimeout(()=>api('/api/config',{method:'PUT',body:JSON.stringify(state.config)})
+    .catch(e=>{if(e.status!==401)showBanner('配置保存失败: '+e.message);}),400);
 }
 async function loadFx(){
   const pf=profile();
   if(pf.exchangeRate.mode==='manual'){state.rate=+pf.exchangeRate.manualValue||7.10;state.rateInfo='手动';return;}
-  try{const r=await fetch('/api/fx');if(!r.ok)throw 0;const j=await r.json();
+  try{const j=await apiJSON('/api/fx');
     state.rate=j.rate;state.rateInfo=`${j.source.includes('er-api')?'er-api':'源'} ${j.fetchedAt||''}`.slice(0,28);
     pf.exchangeRate.auto={value:j.rate,source:j.source,fetchedAt:j.fetchedAt};
   }catch(e){state.rateInfo='获取失败·用上次/手动值';}
@@ -846,6 +909,10 @@ function renderRecon(){
 
 // ---------- 事件绑定 ----------
 function bindGlobal(){
+  $('#authLogout').onclick=async()=>{
+    try{await apiJSON('/api/auth/logout',{method:'POST'});}catch(e){}
+    clearSessionToken();location.reload();
+  };
   $('#tabs').onclick=e=>{if(e.target.dataset.t){state.tab=e.target.dataset.t;render();}};
   document.addEventListener('click',e=>{if(state.openFilter&&!e.target.closest('.fdrop')){state.openFilter=null;if(state.tab==='result')renderResult();}});
   document.addEventListener('click',e=>{if(openScopeDrop&&!e.target.closest('.scdrop')){openScopeDrop.style.display='none';openScopeDrop=null;}});
@@ -898,16 +965,21 @@ function bindGlobal(){
   $('#subUrl').value=state.config.proxySubscription||'';
   const subMsg=(t,cls)=>{const m=$('#subMsg');m.textContent=t;
     m.style.color=cls==='danger'?'#b91c1c':cls==='ok'?'#15803d':'#6b7280';};
-  $('#subUrl').oninput=()=>subMsg(
-    $('#subUrl').value.trim()===(state.config.proxySubscription||'')?'':'未保存');
+  const readProxyUrl=()=>{
+    try{
+      const v=AipcValidation.normalizeProxyUrl($('#subUrl').value);
+      $('#subUrl').setCustomValidity('');return v;
+    }catch(e){$('#subUrl').setCustomValidity('URL 格式错误');subMsg('URL 格式错误：请填写完整的 http/https 订阅地址','danger');return null;}
+  };
+  $('#subUrl').oninput=()=>{
+    const v=readProxyUrl();
+    if(v!==null)subMsg(v===(state.config.proxySubscription||'')?'':'未保存');
+  };
   $('#subSave').onclick=async()=>{
     if(!state.backend)return subMsg('后端不可达','danger');
-    const v=$('#subUrl').value.trim();
+    const v=readProxyUrl();if(v===null)return;
     try{
-      const r=await fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({...state.config,proxySubscription:v})});
-      const j=await r.json();
-      if(!r.ok||j.error)throw new Error(j.error||('HTTP '+r.status));
+      await apiJSON('/api/config',{method:'PUT',body:JSON.stringify({...state.config,proxySubscription:v})});
       state.config.proxySubscription=v;persist();
       subMsg('已保存 ✓','ok');
       setTimeout(()=>{if($('#subMsg').textContent==='已保存 ✓')subMsg('');},3000);
@@ -915,24 +987,23 @@ function bindGlobal(){
   };
   const runSubTest=async(force)=>{
     const btn=force?$('#subTestForce'):$('#subTest'),box=$('#updStatus');
-    const url=$('#subUrl').value.trim();
+    const url=readProxyUrl();if(url===null)return;
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
       '⚠ 后端不可达（/api/models 请求失败）'));return;}
+    if(state.jobRunning){box.append(h('div',{class:'sub danger'},'已有任务正在运行，请等待完成'));return;}
     // 订阅输入可空：Go 回退已保存 config，Python 用 v2rayN 节点源（与订阅无关）
     const oldTxt=btn.textContent;
+    state.jobRunning=true;$('#srvDown').disabled=true;
     btn.disabled=true;btn.textContent='测试中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
     log('已提交节点测试，等待后端返回…');
-    const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
+    const done=()=>{state.jobRunning=false;$('#srvDown').disabled=false;btn.disabled=false;btn.textContent=oldTxt;};
     try{
-      const r=await fetch('/api/nodes/test',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({url,force})});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const {jobId}=await r.json();
+      const {jobId}=await apiJSON('/api/nodes/test',{method:'POST',body:JSON.stringify({url,force})});
       const t0=Date.now();
       const poll=setInterval(async()=>{
         try{
-          const j=await(await fetch('/api/jobs/'+jobId)).json();
+          const j=await(await api('/api/jobs/'+jobId)).json();
           if(j.status==='running'){const last=(j.log||[]).slice(-1)[0];
             box.lastChild&&box.lastChild.textContent.startsWith('运行中')?box.lastChild.remove():0;
             log(`运行中… ${((Date.now()-t0)/1000).toFixed(0)}s`+(last?` · ${last}`:''));return;}
@@ -946,7 +1017,7 @@ function bindGlobal(){
               log(`　${n.ok?'✓':'✗'} ${n.name}（${n.kind}）${n.ok?' '+n.ms+'ms':' '+(n.error||'')}`,
                 n.ok?'':'danger');
           }else log('✗ 测试失败: '+(j.error||'未知'),'danger');
-        }catch(e){/* 轮询失败下一轮再试 */}
+        }catch(e){clearInterval(poll);done();if(e.status!==401)log('✗ 任务状态获取失败: '+e.message,'danger');}
       },1500);
     }catch(e){done();log('✗ 请求失败: '+e.message);}
   };
@@ -956,29 +1027,29 @@ function bindGlobal(){
     const btn=$('#updBtn'),box=$('#updStatus');
     if(!state.backend){box.innerHTML='';box.append(h('div',{style:'color:#b91c1c'},
       '⚠ 后端不可达（/api/models 请求失败）。请确认 python -m server.app 在运行，且通过 http://127.0.0.1:8787 访问页面'));return;}
+    if(state.jobRunning){box.append(h('div',{class:'sub danger'},'已有任务正在运行，请等待完成'));return;}
     const oldTxt=btn.textContent;
+    state.jobRunning=true;$('#srvDown').disabled=true;
     btn.disabled=true;btn.textContent='⟳ 更新中…';box.innerHTML='';
     const log=(t,cls)=>box.append(h('div',{class:'sub '+(cls||'')},t));
     log('已提交更新任务，等待后端返回…');
     if($('#subUrl').value.trim()!==(state.config.proxySubscription||''))
       log('⚠ 订阅地址已修改未保存，本次按已保存配置执行','danger');
-    const done=()=>{btn.disabled=false;btn.textContent=oldTxt;};
+    const done=()=>{state.jobRunning=false;$('#srvDown').disabled=false;btn.disabled=false;btn.textContent=oldTxt;};
     try{
-      const r=await fetch('/api/pricing/update',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-      const {jobId}=await r.json();
+      const {jobId}=await apiJSON('/api/pricing/update',{method:'POST',body:'{}'});
       const t0=Date.now();
       const PHASE={direct:'直连抓取',sub:'订阅拉取',warm:'缓存节点复用',probe:'节点池探测',merge:'合并写回'};
       let lastP=null;
-      const renderProg=(p,fin,totalS,lastLog)=>{
+      const renderProg=(p,fin,totalS,lastLog,success=true)=>{
         let prog=box.querySelector('.prog');
         if(!prog){prog=h('div',{class:'sub prog',
           style:'border:1px solid #ddd;background:#fafafa;padding:4px 8px;margin:2px 0'});
           box.prepend(prog);}
         prog.innerHTML='';
         const doneN=(p.done||[]).length;
-        prog.append(h('div',{style:fin?'color:#166534;font-weight:600':''},
-          (fin?`✓ 完成`:`⟳ 更新中`)+` · 总耗时 ${totalS}s`+
+        prog.append(h('div',{style:fin?(success?'color:#166534;font-weight:600':'color:#b91c1c;font-weight:600'):''},
+          (fin?(success?'✓ 完成':'✗ 失败'):'⟳ 更新中')+` · 总耗时 ${totalS}s`+
           (p.targets?` · 已解决 ${doneN}/${p.targets.length}`:'')));
         if(p.targets&&p.targets.length){ // 厂家徽章行：✓完成 ⟳在抓 …等待 ✗未成
           const chips=h('div',{style:'display:flex;gap:4px;flex-wrap:wrap;margin:3px 0'});
@@ -999,7 +1070,7 @@ function bindGlobal(){
         if(!fin&&lastLog)prog.append(h('div',{style:'opacity:.7'},'最近: '+lastLog));};
       const poll=setInterval(async()=>{
         try{
-          const j=await(await fetch('/api/jobs/'+jobId)).json();
+          const j=await(await api('/api/jobs/'+jobId)).json();
           const totalS=((Date.now()-(j.startedAt||t0))/1000)|0;
           if(j.status==='running'){
             const p=j.progress||{};
@@ -1007,11 +1078,15 @@ function bindGlobal(){
             renderProg(p,false,totalS,(j.log||[]).slice(-1)[0]);
             return;}
           clearInterval(poll);done();
-          const fp=j.progress||lastP;
-          if(fp&&fp.targets)renderProg(fp,true,totalS);
+          const success=j.status==='done',fp=j.progress||lastP;
+          if(fp&&fp.targets)renderProg(fp,true,totalS,null,success);
           else box.querySelector('.prog')?.remove();
-          if(j.status==='done'){
-            const d=await(await fetch('/api/models')).json();state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
+          if(success){
+            try{
+              const d=await apiJSON('/api/models');
+              if(!Array.isArray(d.providers))throw new Error('价目响应缺少 providers');
+              state.dataset=d;localStorage.setItem(LS_KEY,JSON.stringify(d));
+            }catch(err){log('⚠ 价目已写回，但页面刷新失败: '+err.message,'danger');}
             log('✓ 更新完成');
             const rep=j.report&&(j.report.providers||j.report.byProvider);
             if(rep)for(const [k,v] of Object.entries(rep)){
@@ -1026,14 +1101,16 @@ function bindGlobal(){
               log('⚠ 不可达源（直连与代理均失败）: '+j.report.unreachable.join('、'),'danger');
             renderOfficial();
           }else log('✗ 失败: '+(j.error||'未知'),'danger');
-        }catch(e){/* 轮询失败下一轮再试 */}
+        }catch(e){clearInterval(poll);done();if(e.status!==401)log('✗ 任务状态获取失败: '+e.message,'danger');}
       },1500);
     }catch(e){done();log('✗ 请求失败: '+e.message);}
   };
 }
 $('#srvDown').onclick=async()=>{
+  if(state.jobRunning)return alert('价目更新或节点测试正在运行，请等待完成后再关闭服务。');
   if(!confirm('关闭本地后端服务？页面将无法再请求 API，需手动重启服务。'))return;
-  try{await fetch('/api/shutdown',{method:'POST'});}catch(e){/* 服务先死也算关了 */}
+  try{await apiJSON('/api/shutdown',{method:'POST'});}
+  catch(e){return alert('关闭服务失败: '+e.message);}
   document.body.innerHTML='<div style="max-width:600px;margin:80px auto;text-align:center;font-family:inherit">'+
     '<h2 style="color:#166534">✓ 后端已关闭</h2>'+
     '<p class="dim">aipc-server / python -m server.app 已停止，本页可安全关闭。</p>'+

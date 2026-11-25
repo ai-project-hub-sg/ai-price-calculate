@@ -12,10 +12,14 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/assets"
+	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/auth"
 	"github.com/ai-project-hub-sg/ai-price-calculate/server-go/internal/httpsrv"
 )
 
@@ -36,14 +40,36 @@ func main() {
 	if abs, err := filepath.Abs(*data); err == nil {
 		*data = abs
 	}
-	srv := httpsrv.New(*data, publicDir, assets.Public)
+	authManager, err := auth.LoadManager()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "登录凭据加载失败:", err)
+		os.Exit(1)
+	}
+	srv := httpsrv.New(*data, publicDir, assets.Public, authManager)
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	httpSrv := &http.Server{Addr: addr, Handler: srv.Handler()}
-	srv.ShutdownFn = func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		httpSrv.Shutdown(ctx)
+	var shutdownOnce sync.Once
+	shutdown := func() {
+		shutdownOnce.Do(func() {
+			waitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			defer cancel()
+			fmt.Fprintln(os.Stderr, "等待后台任务完成…")
+			srv.StopAcceptingJobs()
+			if err := srv.WaitForJobs(waitCtx); err != nil {
+				fmt.Fprintln(os.Stderr, "后台任务等待超时，安全退出:", err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			httpSrv.Shutdown(ctx)
+		})
 	}
+	srv.ShutdownFn = shutdown
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-sigCtx.Done()
+		shutdown()
+	}()
 	fmt.Printf("AI 价格归一化计算器 → http://%s\n", addr)
 	fmt.Printf("数据目录 %s · 前端来源 %s\n", *data, mode)
 	fmt.Println("接口: /api/models /api/config /api/fx /api/nodes " +

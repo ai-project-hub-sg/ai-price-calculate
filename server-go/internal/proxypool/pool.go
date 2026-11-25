@@ -21,6 +21,7 @@ import (
 )
 
 const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+const maxFetchBodyBytes = 8 << 20
 
 // baseCtx 全协议注册表上下文，进程内所有 box 实例共享。
 var baseCtx = include.Context(context.Background())
@@ -45,7 +46,10 @@ func FetchURL(rawURL string, proxyPort int, timeoutMS int) Result {
 		Timeout:   time.Duration(timeoutMS) * time.Millisecond,
 		Transport: &http.Transport{Proxy: proxy},
 	}
-	req, _ := http.NewRequest("GET", rawURL, nil)
+	req, err := http.NewRequest("GET", rawURL, nil)
+	if err != nil {
+		return Result{Error: "URL 格式错误: " + err.Error()}
+	}
 	req.Header.Set("User-Agent", ua)
 	t0 := time.Now()
 	resp, err := client.Do(req)
@@ -54,9 +58,12 @@ func FetchURL(rawURL string, proxyPort int, timeoutMS int) Result {
 		return Result{Status: 0, Ms: ms, Error: err.Error()}
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBodyBytes+1))
 	if err != nil {
 		return Result{Status: resp.StatusCode, Ms: ms, Error: err.Error()}
+	}
+	if len(body) > maxFetchBodyBytes {
+		return Result{Status: resp.StatusCode, Ms: ms, Error: "响应体超过 8MB 上限"}
 	}
 	r := Result{Status: resp.StatusCode, Bytes: len(body), Ms: ms, Body: body}
 	if resp.StatusCode != 200 {

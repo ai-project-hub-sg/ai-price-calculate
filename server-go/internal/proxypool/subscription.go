@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type Node struct {
@@ -15,6 +16,27 @@ type Node struct {
 	Name     string         // URI fragment（备注名）
 	Kind     string         // "vless-reality" | "hysteria2"
 	Outbound map[string]any // sing-box outbound JSON（tag 占位 "out"）
+}
+
+func ValidateSubscriptionURL(raw string) error {
+	if raw == "" {
+		return fmt.Errorf("代理订阅 URL 不能为空")
+	}
+	if len(raw) > 4096 || strings.IndexFunc(raw, unicode.IsSpace) >= 0 {
+		return fmt.Errorf("代理订阅 URL 格式错误")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Opaque != "" || u.Hostname() == "" ||
+		(strings.ToLower(u.Scheme) != "http" && strings.ToLower(u.Scheme) != "https") {
+		return fmt.Errorf("代理订阅 URL 格式错误：仅支持完整的 http/https 地址")
+	}
+	if port := u.Port(); port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("代理订阅 URL 格式错误：端口无效")
+		}
+	}
+	return nil
 }
 
 func (n Node) Label() string {
@@ -28,6 +50,9 @@ func (n Node) Label() string {
 // log 非空时输出显式路径决策（解码方式、节点统计）。
 // 注意：订阅地址本身必须直连可达——先有鸡还是先有蛋，它不走路径代理。
 func LoadSubscription(subURL string, log func(string)) ([]Node, error) {
+	if err := ValidateSubscriptionURL(subURL); err != nil {
+		return nil, err
+	}
 	// 订阅端点常见抖动（头部超时 / 200 后 body 滴漏卡死）——失败自动重试一次，
 	// 两次都失败才报错。重试日志显式可见。
 	var r Result
