@@ -118,10 +118,11 @@ func (s *Server) subURL() (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	if err := proxypool.ValidateSubscriptionURL(raw); err != nil {
+	norm, err := proxypool.ValidateSubscriptionURL(raw)
+	if err != nil {
 		return "", fmt.Errorf("config.json 的 proxySubscription 无效: %w", err)
 	}
-	return raw, nil
+	return norm, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -324,6 +325,10 @@ func (s *Server) hPutConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "config 必须是 JSON 对象"})
 		return
 	}
+	if len(cfg) == 0 {
+		writeJSON(w, 400, map[string]any{"error": "config 不能为空 JSON 对象"})
+		return
+	}
 	if raw, exists := cfg["proxySubscription"]; exists {
 		sub, ok := raw.(string)
 		if !ok {
@@ -331,10 +336,12 @@ func (s *Server) hPutConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if sub != "" {
-			if err := proxypool.ValidateSubscriptionURL(sub); err != nil {
+			norm, err := proxypool.ValidateSubscriptionURL(sub)
+			if err != nil {
 				writeJSON(w, 400, map[string]any{"error": "proxySubscription 无效: " + err.Error()})
 				return
 			}
+			cfg["proxySubscription"] = norm
 		}
 	}
 	b, err := json.MarshalIndent(cfg, "", "  ")
@@ -535,10 +542,12 @@ func (s *Server) hNodesTest(w http.ResponseWriter, r *http.Request) {
 		}
 		sub = value
 		if sub != "" {
-			if err := proxypool.ValidateSubscriptionURL(sub); err != nil {
+			norm, err := proxypool.ValidateSubscriptionURL(sub)
+			if err != nil {
 				writeJSON(w, 400, map[string]any{"error": "body.url 无效: " + err.Error()})
 				return
 			}
+			sub = norm
 		}
 	}
 	if sub == "" {

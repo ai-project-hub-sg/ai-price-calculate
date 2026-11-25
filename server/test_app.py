@@ -191,7 +191,7 @@ class AppServerTests(unittest.TestCase):
         original = b'{"marker":"original","proxySubscription":""}'
         self.config_path.write_bytes(original)
         token = self.login()
-        for raw in (b"{", b"[]", b"null", b'"text"', b"\xff"):
+        for raw in (b"{", b"[]", b"null", b'"text"', b"\xff", b"{}"):
             with self.subTest(raw=raw):
                 status, payload, _ = self.request_json(
                     "PUT", "/api/config", raw=raw, token=token)
@@ -280,12 +280,14 @@ class AppServerTests(unittest.TestCase):
 
     def test_nodes_test_validates_url_without_fetching_subscription(self):
         token = self.login()
-        with mock.patch.object(app, "_run_nodes_test") as run:
-            status, payload, _ = self.request_json(
-                "POST", "/api/nodes/test", {"url": "not-a-url"}, token=token)
-            self.assertEqual(status, 400)
-            self.assertIn("error", payload)
-            run.assert_not_called()
+        for bad_url in ("not-a-url", None, 42):
+            with self.subTest(url=bad_url), \
+                    mock.patch.object(app, "_run_nodes_test") as run:
+                status, payload, _ = self.request_json(
+                    "POST", "/api/nodes/test", {"url": bad_url}, token=token)
+                self.assertEqual(status, 400)
+                self.assertIn("error", payload)
+                run.assert_not_called()
 
         called = threading.Event()
 

@@ -1,10 +1,12 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -15,8 +17,9 @@ const (
 	adminUsernameEnv = "AIPC_ADMIN_USERNAME"
 	adminPasswordEnv = "AIPC_ADMIN_PASSWORD"
 
-	passwordSaltBytes = 32
-	tokenBytes        = 32
+	passwordSaltBytes  = 32
+	passwordIterations = 120_000 // 与 Python security.py _PASSWORD_ITERATIONS 一致
+	tokenBytes         = 32
 	sessionTTL        = 12 * time.Hour
 	rateLimitWindow   = 15 * time.Minute
 	maxFailedLogins   = 5
@@ -160,12 +163,25 @@ func (m *Manager) Logout(token string) {
 	delete(m.sessions, tokenHash)
 }
 
+// hashPassword 与 Python hashlib.pbkdf2_hmac("sha256", …, 120_000, dklen=32)
+// 等价：dkLen=32=hashLen 时 PBKDF2 只有单个输出块 T1。
 func hashPassword(salt []byte, password string) [sha256.Size]byte {
-	h := sha256.New()
-	_, _ = h.Write(salt)
-	_, _ = h.Write([]byte(password))
+	mac := hmac.New(sha256.New, []byte(password))
+	var blockIndex [4]byte
+	binary.BigEndian.PutUint32(blockIndex[:], 1)
+	_, _ = mac.Write(salt)
+	_, _ = mac.Write(blockIndex[:])
+	u := mac.Sum(nil)
 	var sum [sha256.Size]byte
-	copy(sum[:], h.Sum(nil))
+	copy(sum[:], u)
+	for i := 1; i < passwordIterations; i++ {
+		mac.Reset()
+		_, _ = mac.Write(u)
+		u = mac.Sum(nil)
+		for j := range sum {
+			sum[j] ^= u[j]
+		}
+	}
 	return sum
 }
 

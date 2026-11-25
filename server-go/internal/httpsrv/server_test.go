@@ -256,11 +256,11 @@ func TestPutConfigValidationDoesNotOverwrite(t *testing.T) {
 		`{"version":`,
 		`null`,
 		`[]`,
+		`{}`,
 		`{} {}`,
 		`{"proxySubscription":"not-a-url"}`,
 		`{"proxySubscription":"file:///etc/passwd"}`,
 		`{"proxySubscription":"ftp://example.invalid/sub"}`,
-		`{"proxySubscription":" https://example.invalid/sub"}`,
 		`{"proxySubscription":"   "}`,
 		`{"proxySubscription":42}`,
 		`{"proxySubscription":null}`,
@@ -299,13 +299,31 @@ func TestPutConfigValidationDoesNotOverwrite(t *testing.T) {
 		}
 	}
 
+	// 首尾空白与 Python 一致：strip 后规范化存储而非拒绝。
+	rec := performRequest(handler, http.MethodPut, "/api/config",
+		`{"version":1,"proxySubscription":"  https://example.invalid/sub?value=fake  "}`, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("whitespace-padded URL status = %d; body = %s", rec.Code, rec.Body.String())
+	}
+	data, err := os.ReadFile(server.configPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg["proxySubscription"] != "https://example.invalid/sub?value=fake" {
+		t.Fatalf("proxySubscription stored = %v, want trimmed", cfg["proxySubscription"])
+	}
+
 	blocked := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	badServer := New(blocked, "", nil, auth.NewManager(testUsername, testPassword))
 	badToken := loginToken(t, badServer.Handler())
-	rec := performRequest(badServer.Handler(), http.MethodPut, "/api/config", `{}`, badToken)
+	rec = performRequest(badServer.Handler(), http.MethodPut, "/api/config", `{"version":1}`, badToken)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("MkdirAll failure status = %d, want 500", rec.Code)
 	}
@@ -362,7 +380,6 @@ func TestInvalidSubscriptionsDoNotStartJobs(t *testing.T) {
 	for _, body := range []string{
 		`{"url":"file:///etc/passwd"}`,
 		`{"url":"ftp://example.invalid/sub"}`,
-		`{"url":" https://example.invalid/sub"}`,
 		`{"url":"   "}`,
 		`{"url":123}`,
 		`{"url":`,

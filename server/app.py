@@ -288,6 +288,9 @@ class Handler(BaseHTTPRequestHandler):
             cfg = self._body()
             if cfg is None:
                 return
+            if not cfg:
+                self._json({"error": "config 不能为空 JSON 对象"}, 400)
+                return
             if "proxySubscription" in cfg and cfg["proxySubscription"] != "":
                 try:
                     cfg["proxySubscription"] = validation.validate_proxy_url(
@@ -373,7 +376,7 @@ class Handler(BaseHTTPRequestHandler):
             if body is None:
                 return
             url = body.get("url", "")
-            if url is not None and url != "":
+            if url != "":
                 try:
                     validation.validate_proxy_url(url)
                 except ValueError as e:

@@ -14,16 +14,30 @@ func TestValidateSubscriptionURL(t *testing.T) {
 		"https://user:pass@example.com:443/sub",
 	}
 	for _, raw := range valid {
-		if err := ValidateSubscriptionURL(raw); err != nil {
+		if norm, err := ValidateSubscriptionURL(raw); err != nil {
 			t.Errorf("ValidateSubscriptionURL(%q): %v", raw, err)
+		} else if norm != raw {
+			t.Errorf("ValidateSubscriptionURL(%q) normalized to %q", raw, norm)
+		}
+	}
+	// 首尾空白：与 Python validate_proxy_url 一致，strip 后返回规范化地址。
+	for _, raw := range []string{"  https://example.com/sub  ", "\thttp://127.0.0.1:8080/sub\n"} {
+		want := "https://example.com/sub"
+		if raw[0] == '\t' {
+			want = "http://127.0.0.1:8080/sub"
+		}
+		if norm, err := ValidateSubscriptionURL(raw); err != nil {
+			t.Errorf("ValidateSubscriptionURL(%q): %v", raw, err)
+		} else if norm != want {
+			t.Errorf("ValidateSubscriptionURL(%q) = %q, want %q", raw, norm, want)
 		}
 	}
 	invalid := []string{
-		"", "%", "example.com/sub", "ftp://example.com/sub", "https:///sub",
+		"", "   ", "%", "example.com/sub", "ftp://example.com/sub", "https:///sub",
 		"https://example.com/a b", "https://example.com/%zz", "http://example.com:0/sub", "http://example.com:65536/sub",
 	}
 	for _, raw := range invalid {
-		if err := ValidateSubscriptionURL(raw); err == nil {
+		if _, err := ValidateSubscriptionURL(raw); err == nil {
 			t.Errorf("ValidateSubscriptionURL(%q) unexpectedly succeeded", raw)
 		}
 	}

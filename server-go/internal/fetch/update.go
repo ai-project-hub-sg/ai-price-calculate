@@ -51,7 +51,8 @@ func Update(o Options) (map[string]any, error) {
 	updateMu.Lock()
 	defer updateMu.Unlock()
 	if o.SubURL != "" {
-		if err := proxypool.ValidateSubscriptionURL(o.SubURL); err != nil {
+		var err error
+		if o.SubURL, err = proxypool.ValidateSubscriptionURL(o.SubURL); err != nil {
 			return nil, err
 		}
 	}

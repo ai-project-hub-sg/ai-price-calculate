@@ -5,10 +5,25 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 )
+
+// hashPassword 必须与 Python hashlib.pbkdf2_hmac("sha256", pw, salt, 120_000, 32)
+// 逐字节一致——向量由 Python 生成，防双端实现悄悄漂移。
+func TestHashPasswordMatchesPythonPBKDF2(t *testing.T) {
+	var salt [passwordSaltBytes]byte
+	for i := range salt {
+		salt[i] = byte(i)
+	}
+	got := hashPassword(salt[:], "secret")
+	const want = "9bd084e98f8bc344b0a15ec148a5b520321c80ee8bc451f5b867f8cbc26949ff"
+	if hex := fmt.Sprintf("%x", got); hex != want {
+		t.Fatalf("hashPassword = %s, want PBKDF2-HMAC-SHA256 %s", hex, want)
+	}
+}
 
 func TestLoginAndAuthenticate(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
