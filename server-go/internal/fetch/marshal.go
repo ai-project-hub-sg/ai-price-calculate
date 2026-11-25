@@ -23,7 +23,7 @@ type Dataset struct {
 	rawProv   map[string]json.RawMessage // id → 原始子树字节
 	provs     map[string]map[string]any  // id → 已解析（dirty 才写）
 	dirty     map[string]bool
-	eol       string                     // 输入文件换行风格，写回保留（\n 或 \r\n）
+	eol       string // 输入文件换行风格，写回保留（\n 或 \r\n）
 }
 
 // LoadDataset 读 models.json：顶层与 provider 子树保留原始字节。
@@ -59,6 +59,9 @@ func LoadDataset(path string) (*Dataset, error) {
 			if err := json.Unmarshal(v, &pl); err != nil {
 				return nil, fmt.Errorf("providers 解析失败: %w", err)
 			}
+			if pl == nil {
+				return nil, fmt.Errorf("providers 必须是数组")
+			}
 			for _, pr := range pl {
 				var id struct {
 					ID string `json:"id"`
@@ -72,6 +75,9 @@ func LoadDataset(path string) (*Dataset, error) {
 		default:
 			d.extra[k] = v
 		}
+	}
+	if _, ok := top["providers"]; !ok {
+		return nil, fmt.Errorf("models.json 缺少 providers 数组")
 	}
 	return d, nil
 }

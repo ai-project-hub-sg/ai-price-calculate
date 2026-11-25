@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 
@@ -32,6 +33,9 @@ TODAY = _dt.date.today().isoformat()
 # 判定"页面真实抓到"的最小字节数——Kimi 等 JS 渲染页返回的空壳 .md
 # 只有几百 B，低于此阈值视为未抓到（显式阈值，勿静默改）。
 MIN_USEFUL_BODY = 500
+
+# 同一进程内的所有更新必须串行：读取、合并、备份和写回是一个完整事务。
+_UPDATE_LOCK = threading.Lock()
 
 
 # ---------------------------------------------------------------- 解析工具
@@ -418,8 +422,59 @@ def _validate_body(pid: str, body: bytes) -> bool:
         return False
 
 
+def _atomic_write_json(path: str, payload: dict):
+    """同目录唯一临时文件 + fsync + replace；失败时保留原文件并清理临时文件。"""
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{os.path.basename(path)}-", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.chmod(tmp, os.stat(path).st_mode & 0o777)
+        except FileNotFoundError:
+            os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+
+def _atomic_copy(source: str, destination: str):
+    """原子备份：备份失败必须抛错，阻止后续覆盖 models.json。"""
+    with open(source, "rb") as src:
+        directory = os.path.dirname(os.path.abspath(destination))
+        fd, tmp = tempfile.mkstemp(
+            prefix=f".{os.path.basename(destination)}-", suffix=".tmp",
+            dir=directory)
+        try:
+            with os.fdopen(fd, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+                dst.flush()
+                os.fsync(dst.fileno())
+            shutil.copystat(source, tmp)
+            os.replace(tmp, destination)
+        finally:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+
+
 def update(providers: list[str] | None = None, max_nodes: int = 25,
            dry_run: bool = False, log=print, progress=None) -> dict:
+    """全局串行执行更新，避免并发任务各自读取旧数据集并丢失合并结果。"""
+    with _UPDATE_LOCK:
+        return _update(providers, max_nodes=max_nodes, dry_run=dry_run,
+                       log=log, progress=progress)
+
+
+def _update(providers: list[str] | None = None, max_nodes: int = 25,
+            dry_run: bool = False, log=print, progress=None) -> dict:
     """progress(dict)：结构化进度回调（对齐 Go fetch.Progress），字段
     phase/item/itemIndex/itemTotal/done/total/pending/startedAt——前端据此渲染
     "在测哪个厂家/哪个节点/还剩多少/本项耗时"。无回调不影响行为。"""
@@ -443,7 +498,10 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
                 inflight.discard(pid)
 
     targets = providers or list(SOURCES)
-    dataset = json.load(open(MODELS_PATH, encoding="utf-8"))
+    with open(MODELS_PATH, encoding="utf-8") as f:
+        dataset = json.load(f)
+    if not isinstance(dataset, dict) or not isinstance(dataset.get("providers"), list):
+        raise ValueError("models.json 必须是包含 providers 数组的 JSON 对象")
     report: dict = {"fetchedAt": TODAY, "providers": {}}
 
     fetched: dict[str, str] = {}      # pid -> markdown text
@@ -544,9 +602,8 @@ def update(providers: list[str] | None = None, max_nodes: int = 25,
 
     if changed and not dry_run:
         emit("merge")
-        shutil.copy2(MODELS_PATH, MODELS_PATH + ".bak")
-        with open(MODELS_PATH, "w", encoding="utf-8") as f:
-            json.dump(dataset, f, ensure_ascii=False, indent=2)
+        _atomic_copy(MODELS_PATH, MODELS_PATH + ".bak")
+        _atomic_write_json(MODELS_PATH, dataset)
         log(f"已写回 models.json（备份 models.json.bak）")
     elif dry_run:
         log("dry-run：不写回")

@@ -25,13 +25,23 @@ file aipc-server   # 应显示 static / not stripped 均可，关键是不依赖
 ```
 
 ```bash
+sudo useradd --system --home /opt/aipc --shell /usr/sbin/nologin aipc
 sudo mkdir -p /opt/aipc/data
 scp aipc-server root@<vps>:/opt/aipc/
 scp data/models.json root@<vps>:/opt/aipc/data/
+sudo chown -R aipc:aipc /opt/aipc/data
 sudo chmod +x /opt/aipc/aipc-server
 ```
 
-冒烟：`/opt/aipc/aipc-server --port 8787`，另开终端 `curl 127.0.0.1:8787/api/models` 出 JSON 即正常。
+在服务器上创建仅 root 可写的 `/etc/aipc/aipc.env`，内容为 `AIPC_ADMIN_USERNAME=...` 与 `AIPC_ADMIN_PASSWORD=...`（替换为真实值，不要提交文件）：
+
+```bash
+sudo install -d -m 0755 /etc/aipc
+sudo install -m 0600 /dev/null /etc/aipc/aipc.env
+sudoedit /etc/aipc/aipc.env
+```
+
+建议通过下方 systemd 的 `EnvironmentFile` 注入该文件后启动，避免把密码展开到命令行参数中。登录后访问 `/api/models`；未带 Bearer token 应返回 401。
 
 ## 3. systemd
 
@@ -44,8 +54,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=aipc                        # 建议建非 root 用户
+User=aipc
 WorkingDirectory=/opt/aipc
+EnvironmentFile=/etc/aipc/aipc.env
 ExecStart=/opt/aipc/aipc-server --host 127.0.0.1 --port 8787
 Restart=on-failure
 RestartSec=3
@@ -77,7 +88,7 @@ server {
 }
 ```
 
-HTTPS 照常 certbot。`--host 127.0.0.1` 保证只有本机 nginx 能连——**不要**为了图省事绑定 `0.0.0.0`，管理面（改配置、触发抓取）无鉴权。
+HTTPS 照常 certbot。`--host 127.0.0.1` 保证只有本机 nginx 能连。API 已有管理员 Bearer 鉴权，但 HTTPS 仍必须启用，避免密码和令牌明文过网；不要为图省事暴露未加密的公网管理面。
 
 ## 5. 数据与备份
 
@@ -95,7 +106,8 @@ HTTPS 照常 certbot。`--host 127.0.0.1` 保证只有本机 nginx 能连——*
 | job 报「订阅拉取失败」 | `curl <订阅地址>` 在 VPS 上测连通性；看 job 日志的解码方式行 |
 | 某源一直直连失败 | 该源墙外不可达属预期——确认订阅已配置，看日志是否进了节点池探测 |
 | 节点测试全灭/报 `not included in this build` | 二进制漏了 `-tags "with_utls with_quic"` 重新编译 |
-| 启动即退 | `journalctl -u aipc`；常见：`data/` 缺 models.json、端口被占 |
+| 启动即退 | `journalctl -u aipc`；常见：缺少 `AIPC_ADMIN_USERNAME`/`AIPC_ADMIN_PASSWORD`、`EnvironmentFile` 不存在、`data/` 缺 models.json、端口被占 |
+| API 返回 401 | 先在页面登录；检查 Authorization 是否为 `Bearer <token>`；重启服务或退出登录后需重新获取 token |
 
 ## 7. 升级
 
@@ -104,4 +116,4 @@ scp aipc-server root@<vps>:/opt/aipc/aipc-server.new
 ssh root@<vps> 'systemctl stop aipc && mv /opt/aipc/aipc-server.new /opt/aipc/aipc-server && chmod +x /opt/aipc/aipc-server && systemctl start aipc'
 ```
 
-回滚：保留旧二进制重命名即可（数据格式向后兼容，config/models 无破坏性变更）。
+回滚：保留旧二进制重命名即可（数据格式向后兼容，config/models 无破坏性变更）。旧二进制若没有鉴权，不可在公网反代后继续使用。

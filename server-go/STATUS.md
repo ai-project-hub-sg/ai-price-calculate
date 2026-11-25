@@ -1,15 +1,17 @@
 # Go 版移植 — 会话状态与坑记录
 
 > 用途：跨会话交接。每次动 `server-go/` 前先读本文件 + `docs/DUAL_IMPLEMENTATION.md`。
-> 最近更新：2026-11-25（feat/go-port，15 个提交 vs origin/main）
+> 最近更新：2026-11-25（fix/go-port-hardening，安全加固待用户核验）
 
 ## 当前状态
 
-- 分支 `feat/go-port`：移植主体 + 全部 UX/健壮性迭代完成，**与 Python 版功能等价**（双实现同步规则见 DUAL_IMPLEMENTATION §2）
-- 已上线的功能层：①节点可用性缓存（1h TTL，「测试节点」与「价目更新」共享，温路径直接复用）②订阅节点列表缓存+拉取失败自动重试+过期副本兜底 ③结构化实时进度（phase/targets/done/current 在飞集合 + 胜出瞬间事件 + 完成后终态定格卡）④`/api/nodes/test` 测试端点 + 前端「测试节点/强制重测」按钮 ⑤`/api/shutdown` + 前端「⏻ 关闭服务」按钮
-- **Python 侧全部等价**：`nodepool._NODE_CACHE`、`/api/nodes/test`、progress 契约、shutdown 端点均同步；订阅相关三件（列表缓存/重试/兜底）为结构性分歧（v2rayN 无订阅概念）
-- 全部 `go test ./...` 绿；Python 端到端实测通过（节点测试 23/25 可用、anthropic 经节点合并 18）
-- 运行实例：Go `aipc-server.exe --port 8787 --data ../data` · Python `python -m server.app --port 8788`（数据目录固定仓库 data/）
+- `feat/go-port` 仍是待核验基线；安全修复位于独立分支 `fix/go-port-hardening`，尚未合并、push 或申请 PR。
+- 修复分支已实现双后端管理员登录/Bearer 鉴权、Windows 凭据管理器读取、订阅 URL 双重校验、配置/models 原子写、更新串行化、job 快照与停机竞态修复。
+- 所有后端 API（除登录、OPTIONS、静态资源）需 token；前端只存 sessionStorage。CORS 按用户要求保持 `*`。
+- 启动必须配置 `AIPC_ADMIN_USERNAME`/`AIPC_ADMIN_PASSWORD`；Windows 两者均未设置时读取凭据管理器 `aipc-server/admin`。无默认密码。
+- Python 侧同步鉴权、原子写、job 深拷贝与信号停机；节点来源仍与 Go 有意不同。
+- 原功能层：①节点可用性缓存（1h TTL）②订阅节点列表缓存/重试/过期副本兜底 ③结构化实时进度 ④节点测试端点 ⑤ shutdown 端点。
+- 历史运行记录：Go `aipc-server.exe --port 8787 --data ../data`、Python `python -m server.app --port 8788`；旧的无鉴权启动命令已不适用。
 
 ## 已踩的坑（防再踩）
 
@@ -59,12 +61,13 @@ anthropic 直连 307→`app-unavailable-in-region` 311271B 落地页：200、>50
 
 ## 待办 / 未验证
 
-- [x] 用户重测：订阅区按钮、测试节点、价目更新链路、进度显示、关闭服务 —— 全部通过
-- [x] push `feat/go-port` —— 已授权，guard 检查过（15 提交全 `notebook` 身份、0 AI 署名、无二进制被追踪）
-- [ ] 「not found」若再现 → 拿服务端日志定位（日志已就位）
-- [ ] Linux 交叉编译产物在目标机实跑（`GOOS=linux ... -tags "with_utls with_quic"`）
-- [ ] 节点探测 `maxNodes=25` 默认值是否需要暴露给用户配
-- [ ] Python「最近」行的在飞集合/胜出事件在 v2rayN 节点上端到端看过（逻辑对称，未逐帧目验）
+- [x] 历史用户重测：订阅区按钮、测试节点、价目更新链路、进度显示、关闭服务（无鉴权基线）
+- [x] 历史 push `feat/go-port`（既有授权，15 提交全 `notebook` 身份、0 AI 署名、无二进制被追踪）
+- [x] 修复分支离线单测/race/vet/tags/Linux+Windows 交叉编译、syncassets 与未登录浏览器检查
+- [x] 隔离实例鉴权 API 冒烟；登录后完整 UI 流程仍待用户人工核验
+- [ ] Windows Credential Manager 真实读取；Linux 目标机 systemd/nginx 与真实订阅端到端
+- [ ] 用户核验修复分支 → 合并 `feat/go-port` → 完成合并提交后再申请 PR（本次未获 push 授权）
+- [ ] 「not found」若再现 → 拿服务端日志定位
 
 ## 环境
 

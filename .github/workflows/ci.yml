@@ -2,11 +2,10 @@ name: ci
 
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:
-  check:
+  python-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,12 +16,10 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Python syntax check
-        run: python -m compileall -q server
-
-      - name: Frontend JS syntax check
+      - name: Frontend syntax and unit tests
         run: |
           node --check public/calc.js
+          node --check public/validation.js
           node --check public/demo-config.js
           node -e "
             const fs=require('fs'),vm=require('vm');
@@ -31,17 +28,74 @@ jobs:
             ms.forEach((src,i)=>new vm.Script(src,{filename:'inline-'+i+'.js'}));
             console.log('inline scripts parsed OK:',ms.length);
           "
+          node --test
 
-      - name: Server smoke test
+      - name: Python syntax and unit tests
         run: |
-          python -m server.app --port 8787 &
-          sleep 2
-          curl -fsS http://127.0.0.1:8787/ > /dev/null
-          curl -fsS http://127.0.0.1:8787/api/models | grep -q '"providers"'
-          curl -fsS -X PUT http://127.0.0.1:8787/api/config \
+          python -m compileall -q server
+          python -B -m unittest discover -s server -t . -p 'test_*.py'
+
+      - name: Authenticated API smoke test
+        env:
+          AIPC_ADMIN_USERNAME: ci-user
+          AIPC_ADMIN_PASSWORD: ci-only-not-a-real-secret
+        run: |
+          python -m server.app --port 8787 > /tmp/aipc-python.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/ > /dev/null && break
+            sleep 0.2
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/models)" = 401
+          token=$(curl -fsS -X POST http://127.0.0.1:8787/api/auth/login \
             -H 'Content-Type: application/json' \
+            --data '{"username":"ci-user","password":"ci-only-not-a-real-secret"}' | python -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          test -n "$token"
+          curl -fsS http://127.0.0.1:8787/api/models -H "Authorization: Bearer $token" | grep -q '"providers"'
+          curl -fsS -X PUT http://127.0.0.1:8787/api/config \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' \
             --data '{"version":2,"profiles":[{"id":"ci","name":"ci","scenario":{},"stations":[]}],"activeProfileId":"ci"}'
-          curl -fsS http://127.0.0.1:8787/api/config | grep -q '"ci"'
-          test ! -f data/config.json.tmp || (echo "tmp file left behind" && exit 1)
+          curl -fsS http://127.0.0.1:8787/api/config -H "Authorization: Bearer $token" | grep -q '"ci"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X PUT http://127.0.0.1:8787/api/config \
+            -H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data '{broken')" = 400
+          curl -fsS http://127.0.0.1:8787/api/config -H "Authorization: Bearer $token" | grep -q '"ci"'
+          curl -fsS -X POST http://127.0.0.1:8787/api/auth/logout -H "Authorization: Bearer $token"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/models -H "Authorization: Bearer $token")" = 401
+          test -z "$(find data -maxdepth 1 -name '.config-*.tmp' -print -quit)"
           rm -f data/config.json
-          kill %1
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: server-go/go.sum
+
+      - name: Check generated frontend assets
+        working-directory: server-go
+        run: |
+          go run ./tools/syncassets
+          diff -ru --exclude=.gitkeep ../public assets/public
+
+      - name: Go tests and vet
+        working-directory: server-go
+        run: |
+          go test -count=1 ./...
+          go vet ./...
+
+      - name: Go race tests
+        working-directory: server-go
+        run: CGO_ENABLED=1 go test -race -count=1 ./...
+
+      - name: Protocol-tagged tests and Linux build
+        working-directory: server-go
+        run: |
+          go test -count=1 -tags "with_utls with_quic" ./...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags "with_utls with_quic" -o /tmp/aipc-server ./cmd/server
+
+      - name: Windows build
+        working-directory: server-go
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags "with_utls with_quic" -o /tmp/aipc-server.exe ./cmd/server

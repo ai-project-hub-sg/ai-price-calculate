@@ -10,18 +10,22 @@ AI 价格归一化计算器的**单二进制后端**：与 Python 版（`../serv
 ## 快速开始
 
 ```bash
-# Windows / Linux / macOS 通用（需要 Go ≥ 1.24）
+# Windows / Linux / macOS 通用（需要 Go ≥ 1.27.1）
 cd server-go
+export AIPC_ADMIN_USERNAME=admin
+export AIPC_ADMIN_PASSWORD='请替换为足够长的随机密码'
 go run ./tools/syncassets   # 把 ../public 同步进 assets/（embed 前置步骤）
 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 ./aipc-server               # → http://127.0.0.1:8787
 ```
 
+> 两个凭据环境变量必须同时设置。Windows 未设置环境变量时读取凭据管理器目标 `aipc-server/admin`；其他平台只读环境变量。服务不提供默认密码，未配置时拒绝启动。
+
 > **`-tags "with_utls with_quic"` 不可省**：sing-box 的 uTLS（Reality 必需）
 > 与 QUIC（Hysteria2 必需）由 build tag 控制，缺省编译进库但出站初始化即报
 > `uTLS/QUIC is not included in this build`——所有代理节点会全部探测失败。
 
-打开 `http://127.0.0.1:8787/`。数据文件默认读写 **可执行文件同目录下的 `data/`**（`models.json` 必须放入，`config.json`/`fx-cache.json` 运行时自动生成）。
+打开 `http://127.0.0.1:8787/` 并登录。会话令牌仅保存在当前标签页的 sessionStorage，12 小时过期。数据文件默认读写 **可执行文件同目录下的 `data/`**（`models.json` 必须放入，`config.json`/`fx-cache.json` 运行时自动生成）。
 
 ### 命令行参数
 
@@ -50,7 +54,10 @@ go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 
 ```bash
 cd server-go
-go test ./...   # 解析器/合并/写回 vs Python 基准 + 订阅解析单测
+go test ./...   # 解析器/合并/写回 vs Python 基准 + 鉴权/HTTP/订阅解析单测
+go vet ./...
+CGO_ENABLED=1 go test -race ./...
+go test -tags "with_utls with_quic" ./...
 ```
 
 基准由 Python 参考实现产出，改动解析/合并逻辑后需在**仓库根**重跑：

@@ -72,4 +72,4 @@
 
 ## 5. 发布前冒烟（每次交付执行）
 
-`node --check`（全部 js）→ `node --test tests/` → S1-S3 → 记录结果于 PR/验收记录。
+`node --check`（全部 js）→ `node --test` → `python -B -m unittest discover -s server -t . -p 'test_*.py'` → Go test/vet/race/tags → S1-S3 → 记录结果于 PR/验收记录。

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "python -m server.app --port 8787",
     "update-pricing": "python -m server.fetcher",
-    "test": "node --test tests/ && python -m pytest tests_py/ -x -q 2>nul || node --test tests/"
+    "test": "node --test && python -B -m unittest discover -s server -t . -p \"test_*.py\""
   },
   "engines": {
     "python": ">=3.10",
