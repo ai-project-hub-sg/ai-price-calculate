@@ -18,7 +18,7 @@
 | 语法自检 | `python -m compileall server`、`node --check public/calc.js` | 部分可用 |
 | 纯前端打开 | 直接双击 `public/index.html` | 待实现 |
 
-当前阶段进度：`data/models.json`（145 模型、8 厂商口径、双时间戳）、`server/`（app/nodepool/fetcher）已实现并实测；`public/`、`tests/` 待建。
+当前阶段进度见 [`docs/STATUS.md`](STATUS.md)（本文件不记进度，防失真）。
 
 ## 3. 开发顺序（获批后）
 
