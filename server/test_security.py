@@ -286,7 +286,7 @@ class WindowsCredentialManagerTests(unittest.TestCase):
     def test_failed_read_reports_setup_options_without_freeing_null_pointer(self):
         library, read, free, _, _ = self.make_advapi32(succeeds=False)
         with mock.patch.object(ctypes, "WinDLL", return_value=library, create=True), mock.patch.object(
-            ctypes, "get_last_error", return_value=1168
+            ctypes, "get_last_error", return_value=1168, create=True
         ):
             with self.assertRaises(RuntimeError) as caught:
                 security._read_windows_credentials()
