@@ -108,6 +108,7 @@ HTTPS 照常 certbot。`--host 127.0.0.1` 保证只有本机 nginx 能连。API 
 | 节点测试全灭/报 `not included in this build` | 二进制漏了 `-tags "with_utls with_quic"` 重新编译 |
 | 启动即退 | `journalctl -u aipc`；常见：缺少 `AIPC_ADMIN_USERNAME`/`AIPC_ADMIN_PASSWORD`、`EnvironmentFile` 不存在、`data/` 缺 models.json、端口被占 |
 | API 返回 401 | 先在页面登录；检查 Authorization 是否为 `Bearer <token>`；重启服务或退出登录后需重新获取 token |
+| 登录返回 429「登录失败次数过多」 | 登录限流按 **TCP 对端 IP** 计：nginx 同机反代后所有来源共享 `127.0.0.1` 一个桶——攻击者或脚本 15 分钟内 5 次失败会连带锁定管理员（正确密码也 429）。恢复 = `systemctl restart aipc` 或等 ≤15 分钟窗口过期；属有意的 fail-closed（攻击者无法换 IP 扩容尝试） |
 
 ## 7. 升级
 

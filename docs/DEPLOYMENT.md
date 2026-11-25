@@ -36,7 +36,7 @@ cmdkey /generic:aipc-server/admin /user:admin
 
 也可使用「控制面板 → 凭据管理器 → Windows 凭据」手动创建同名通用凭据。用户名存于凭据的 UserName，密码存于 CredentialBlob。若设置了任一凭据环境变量，则两个都必须设置，且优先使用环境变量，不回退到凭据管理器。
 
-浏览器打开 `http://127.0.0.1:8787/` 并登录。令牌只放当前标签页 sessionStorage，12 小时过期；服务重启后全部令牌失效。登录失败每个客户端 15 分钟最多 5 次。除登录、OPTIONS 和静态资源外，所有 `/api/` 端点要求 `Authorization: Bearer <token>`。
+浏览器打开 `http://127.0.0.1:8787/` 并登录。令牌只放当前标签页 sessionStorage，12 小时过期；服务重启后全部令牌失效。登录失败每客户端 15 分钟最多 5 次，超限返回 429——**限流键是 TCP 对端 IP**：本机或 nginx 同机反代部署时所有来源共享 `127.0.0.1` 一个桶，任一侧 5 次失败会连带锁定全部登录者（含正确密码）；恢复 = 重启服务或等 ≤15 分钟窗口过期。除登录、OPTIONS 和静态资源外，所有 `/api/` 端点要求 `Authorization: Bearer <token>`。
 
 `.env.example` 仅提供变量占位示例。Python 不自动加载 `.env`；如需本地文件，请用 shell/systemd 显式注入，`.env` 与 populated `.env.*` 已加入 `.gitignore`，禁止提交。
 
