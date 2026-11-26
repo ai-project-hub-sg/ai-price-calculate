@@ -28,9 +28,9 @@
 | 14 | **订阅拉取的通路**：代理订阅本身若走代理 = 鸡生蛋 | `subscription.go` | 显式注释声明：订阅固定直连，不可达则明确报错 | — |
 | 15 | **Go nil slice → JSON `null`** vs Python 空 list → `[]`：merge 报告字段形状不一致（**测试捕获的真 bug**） | `update.go::MergeProvider` | 四个列表字段 `[]string{}` 初始化 | `merge_test.go::TestMergeParityWithPython` |
 | 16 | **换行符**：Python `open("w")` 在 Windows 产出 CRLF、Linux 产出 LF；Go 恒 LF 会翻转整文件行尾 | `marshal.go` | `LoadDataset` 检测输入换行风格并保留（eol 字段），canonical 块插入前统一转换 | `merge_test.go::TestMarshalUntouchedByteIdentical`（CRLF fixture 逐字节往返） |
-| 17 | **JSON 数字隐式格式**：`fmt`/`encoding` 组合下大数可输出 `1.05e+06`（曾真出现 `contextWindow:1050000`→科学计数法） | `marshal.go` | 数字一律 `json.Marshal` 十进制输出 | `marshal_test.go::TestMarshalCanonicalNumbers` |
+| 17 | **JSON 数字类型丢失**：Go `encoding/json` 全解 float64，int/float 区分丢失——只看值的格式化数学上必然错一侧（`64000`→`64000.0` 或 `2.0`→`2`） | `marshal.go` | 类型保留解码（UseNumber 按 Python 词法分流 int64/float64）+ `pyFloatRepr` 按 CPython repr 写回（极端值科学计数法与 Python 一致而非禁用） | `marshal_test.go::TestMarshalCanonicalNumbers`（CPython 实测向量）、`merge_test.go::TestMergeWritebackByteParityWithPython`（逐字节） |
 | 18 | **JSON 字符串隐式转义**：Go `json.Marshal` 做 HTML 转义（`<`→`\u003c`）与 Python `ensure_ascii=False` 不一致 | `marshal.go` | 手写 `writeJSONString`：仅转义引号/反斜杠/控制字符，UTF-8 原文 | `marshal_test.go::TestWriteJSONStringUTF8` |
-| 19 | **map 键序**：Go `map` 序列化键序不确定（models.json 存在 6 种历史键序变体） | `marshal.go` | 未动子树 raw 字节直通；被 merge provider 按 `fieldOrders` canonical 序；未知键排尾 | `merge_test.go`（xai 原字节直通断言）、`marshal_test.go::TestCanonicalKeyOrder` |
+| 19 | **map 键序**：Go `map` 序列化键序不确定；Python 保留插入序而各解析器 tier 键序异质（deepseek `input/cacheRead/output` vs xai `input/output/cacheRead`），异质是参考实现本性 | `marshal.go`、`fetcher.py::canonicalize` | 双端统一 canonical 键序（CR-004）；Go 未动子树 raw 字节直通、脏 provider 按 `fieldOrders` canonical 序，未知键排尾 | `merge_test.go::TestMergeWritebackByteParityWithPython`（逐字节对拍）、`marshal_test.go::TestCanonicalKeyOrder`、`test_fetcher.py::TestCanonicalize` |
 | 20 | **`freePort` TOCTOU**（选完端口到 sing-box 监听之间存在被抢窗口） | `proxypool/pool.go` | 显式注释声明取舍（本地工具概率极低） | — |
 
 ## 一致性测试矩阵（守护「两边一致且可靠」）

@@ -7,7 +7,12 @@
   - *.expected.json      各厂商 .md fixture 经 Python 解析器的输出行
   - merge_input.json     从真实 data/models.json 抽取的切片（meta + deepseek 裁剪 + xai 原样）
   - merge_expected.json  merge_input 经 Python merge_provider 后的完整数据集 + 合并报告
+  - merge_expected_file.json  Python 对 merge_input 执行 merge 后写回磁盘的
+                         原始字节——Go 写回做逐字节对拍（数字格式/键序/缩进的
+                         严格守门，语义比较看不出的 64000 vs 64000.0 就靠它）
 TODAY 固定为 2026-11-24 保证确定性。
+所有文件以 LF 写出（testdata/.gitattributes 固定 eol=lf）——字节对拍
+不得因 Windows/Linux 检出换行差异而平台相关。
 """
 import copy
 import json
@@ -34,8 +39,10 @@ FIXTURES = {  # fixture 名 → Python 解析器
 
 
 def dump(obj, path: Path):
+    # newline="\n" 固定 LF：Windows 上 write_text 默认把 \n 翻成 CRLF，
+    # 会导致字节对拍平台相关（testdata/.gitattributes 同步固定 eol=lf）
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2),
-                    encoding="utf-8")
+                    encoding="utf-8", newline="\n")
     print("生成", path.relative_to(ROOT))
 
 
@@ -61,11 +68,19 @@ def main():
     })
     merge_input = {"meta": real["meta"],
                    "providers": [ds, provs["xai"]]}
+    # 输入按 canonical 键序写盘——代表升级后稳态（首次写回已完成键序重排）。
+    # Go 对未动 provider 原字节直通，Python 写回 canonical 重排；只有输入
+    # 本身 canonical，两路输出才逐字节一致。
+    merge_input = fetcher.canonicalize(merge_input)
     dump(merge_input, TD / "merge_input.json")
 
     dataset = copy.deepcopy(merge_input)
     report = fetcher.merge_provider(dataset, "deepseek", copy.deepcopy(ds_rows))
     dump({"dataset": dataset, "report": report}, TD / "merge_expected.json")
+
+    # Python 真实写回字节：server/fetcher.py 写回前 canonicalize + json.dump
+    # (ensure_ascii=False, indent=2)——原样记录，供 Go 写回逐字节对拍。
+    dump(fetcher.canonicalize(dataset), TD / "merge_expected_file.json")
 
 
 if __name__ == "__main__":

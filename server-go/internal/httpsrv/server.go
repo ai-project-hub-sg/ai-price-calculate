@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -31,9 +32,9 @@ import (
 )
 
 const (
-	fxURL        = "https://open.er-api.com/v6/latest/USD"
-	fxTTLS       = 24 * 3600
-	jobKeep       = 200 // job log 保留行数
+	fxURL          = "https://open.er-api.com/v6/latest/USD"
+	fxTTLS         = 24 * 3600
+	jobKeep        = 200 // job log 保留行数
 	maxRequestBody = 2 << 20
 )
 
@@ -76,12 +77,12 @@ type Server struct {
 
 	ShutdownFn func() // POST /api/shutdown 调用，main 注入优雅停机
 
-	configMu    sync.Mutex
-	mu          sync.Mutex
-	jobs          map[string]*job
-	runningJobs   int
-	shuttingDown  bool
-	jobsDone      chan struct{} // 非 nil 表示仍有任务；关闭后置 nil，避免重复 close
+	configMu     sync.Mutex
+	mu           sync.Mutex
+	jobs         map[string]*job
+	runningJobs  int
+	shuttingDown bool
+	jobsDone     chan struct{} // 非 nil 表示仍有任务；关闭后置 nil，避免重复 close
 }
 
 func New(dataDir, publicDir string, publicFS fs.FS, authManager *auth.Manager) *Server {
@@ -388,16 +389,28 @@ func (s *Server) hPutConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
+func validFXData(data any) bool {
+	m, ok := data.(map[string]any)
+	if !ok {
+		return false
+	}
+	rate, ok := m["rate"].(float64)
+	return ok && !math.IsNaN(rate) && !math.IsInf(rate, 0) && rate > 0
+}
+
 func (s *Server) hFx(w http.ResponseWriter, r *http.Request) {
+	refresh := r.URL.Query().Get("refresh") == "1"
 	// 缓存可再生，容忍损坏：解析失败直接当无缓存重新拉取（有意为之）
-	if b, err := os.ReadFile(s.fxPath()); err == nil {
-		var cache map[string]any
-		if json.Unmarshal(b, &cache) == nil {
-			if ts, ok := cache["ts"].(float64); ok && time.Since(time.Unix(int64(ts), 0)).Seconds() < fxTTLS {
-				if data, ok := cache["data"].(map[string]any); ok {
-					data["cached"] = true
-					writeJSON(w, 200, data)
-					return
+	if !refresh {
+		if b, err := os.ReadFile(s.fxPath()); err == nil {
+			var cache map[string]any
+			if json.Unmarshal(b, &cache) == nil {
+				if ts, ok := cache["ts"].(float64); ok && time.Since(time.Unix(int64(ts), 0)).Seconds() < fxTTLS {
+					if data, ok := cache["data"].(map[string]any); ok && validFXData(data) {
+						data["cached"] = true
+						writeJSON(w, 200, data)
+						return
+					}
 				}
 			}
 		}
@@ -413,10 +426,15 @@ func (s *Server) hFx(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rates, _ := payload["rates"].(map[string]any)
+	if !validFXData(map[string]any{"rate": rates["CNY"]}) {
+		writeJSON(w, 502, map[string]any{"error": "汇率源返回的 CNY 汇率无效"})
+		return
+	}
+	fetchedAt, _ := payload["time_last_update_utc"].(string)
 	data := map[string]any{
 		"rate":      rates["CNY"],
 		"source":    fxURL,
-		"fetchedAt": payload["time_last_update_utc"],
+		"fetchedAt": fetchedAt,
 		"cached":    false,
 	}
 	os.MkdirAll(s.DataDir, 0o755)
@@ -520,6 +538,70 @@ func (s *Server) WaitForJobs(ctx context.Context) error {
 	}
 }
 
+// maxNodesWarnAbove = 999（同缺省值）：超过即提示「是否输入出错」——
+// 不拒绝，用户可能真需要全池。fetch.MaxNodesHardLimit 之上直接 400。
+const maxNodesWarnAbove = 999
+
+// parseMaxNodes maxNodes = 最多探测节点数，纯上限无魔法值：缺省 999
+// （实际等同全部）；接受正整数（JSON 数字到 Go 皆是 float64，整数值
+// 25.0 与 25 同义）；0/负数/非整数值/非数字报 400；超过硬上限 9999
+// 报 400（极限大值只可能是输错）。注意是「整数值」而非「允许浮点」
+// ——没有 25.1 个节点。
+func parseMaxNodes(body map[string]any) (int, error) {
+	const hint = "maxNodes 必须是正整数值（≥1，如 25；缺省 999 等同全部节点，上限 9999）"
+	raw, exists := body["maxNodes"]
+	if !exists || raw == nil {
+		return 999, nil
+	}
+	v, ok := raw.(float64)
+	if !ok {
+		return 0, fmt.Errorf("%s；收到 %T 类型，不是数字", hint, raw)
+	}
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, fmt.Errorf("%s；收到非有限数字", hint)
+	}
+	if math.Trunc(v) != v {
+		return 0, fmt.Errorf("%s；收到 %v，节点个数不能是小数", hint, v)
+	}
+	if v < 1 {
+		return 0, fmt.Errorf("%s；收到 %v，0 或负数不表示全部——要测全部请缺省或填大数", hint, v)
+	}
+	if v > fetch.MaxNodesHardLimit {
+		return 0, fmt.Errorf("%s；收到 %v，超过上限 %d——是否输入出错？", hint, v, fetch.MaxNodesHardLimit)
+	}
+	return int(v), nil
+}
+
+// maxNodesWarn 软上限提示：>999 不拒绝但明确问用户是否输错——响应
+// warning 字段与 job 日志各发一份（含 nodes/test 缓存命中路径）。
+func maxNodesWarn(n int) string {
+	if n <= maxNodesWarnAbove {
+		return ""
+	}
+	return fmt.Sprintf("maxNodes=%d 超过常用上限 %d——是否输入出错？（硬上限 %d）",
+		n, maxNodesWarnAbove, fetch.MaxNodesHardLimit)
+}
+
+func parseProviders(body map[string]any) ([]string, error) {
+	raw, exists := body["providers"]
+	if !exists || raw == nil {
+		return nil, nil
+	}
+	values, ok := raw.([]any)
+	if !ok {
+		return nil, errors.New("providers 必须是字符串数组")
+	}
+	providers := make([]string, 0, len(values))
+	for _, value := range values {
+		provider, ok := value.(string)
+		if !ok {
+			return nil, errors.New("providers 必须是字符串数组")
+		}
+		providers = append(providers, provider)
+	}
+	return providers, nil
+}
+
 // hNodesTest 启动节点测试 job：body {"url"?}（空=用 config.proxySubscription）。
 // 拉订阅→逐节点连通性探测→report {total, probed, usable, results[]}。
 // 走 job 模型与价目更新同一套轮询机制（探测几十节点要分钟级）。
@@ -561,9 +643,10 @@ func (s *Server) hNodesTest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "未提供订阅地址（body.url 或 config.proxySubscription 均为空）"})
 		return
 	}
-	maxNodes := 25
-	if v, ok := body["maxNodes"].(float64); ok && v > 0 {
-		maxNodes = int(v)
+	maxNodes, err := parseMaxNodes(body)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
 	}
 	force, _ := body["force"].(bool)
 	id := s.startJob(&job{Status: "running"}, func(id string) {
@@ -573,7 +656,11 @@ func (s *Server) hNodesTest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "服务正在关闭，无法启动新任务"})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"jobId": id})
+	resp := map[string]any{"jobId": id}
+	if warn := maxNodesWarn(maxNodes); warn != "" {
+		resp["warning"] = warn
+	}
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) runNodesTest(id, sub string, maxNodes int, force bool) {
@@ -585,6 +672,9 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int, force bool) {
 			j.Log = j.Log[len(j.Log)-jobKeep:]
 		}
 		s.mu.Unlock()
+	}
+	if warn := maxNodesWarn(maxNodes); warn != "" {
+		logf(warn)
 	}
 	finish := func(status string, rep any, err error) {
 		s.mu.Lock()
@@ -634,7 +724,7 @@ func (s *Server) runNodesTest(id, sub string, maxNodes int, force bool) {
 		s.nodeCache.MarkSub(sub, nodes) // 列表入缓存：更新时免重拉
 	}
 	probed := maxNodes
-	if len(nodes) < probed {
+	if probed == 0 || len(nodes) < probed {
 		probed = len(nodes)
 	}
 	logf(fmt.Sprintf("探测前 %d/%d 节点（连通性目标 %s）…", probed, len(nodes), probeURL))
@@ -667,17 +757,15 @@ func (s *Server) hUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 400, map[string]any{"error": "请求体必须是 JSON 对象"})
 		return
 	}
-	var providers []string
-	if v, ok := body["providers"].([]any); ok {
-		for _, p := range v {
-			if ps, ok := p.(string); ok {
-				providers = append(providers, ps)
-			}
-		}
+	providers, err := parseProviders(body)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
 	}
-	maxNodes := 25
-	if v, ok := body["maxNodes"].(float64); ok && v > 0 {
-		maxNodes = int(v)
+	maxNodes, err := parseMaxNodes(body)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": err.Error()})
+		return
 	}
 	sub, err := s.subURL()
 	if err != nil {
@@ -691,7 +779,11 @@ func (s *Server) hUpdate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "服务正在关闭，无法启动新任务"})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"jobId": id})
+	resp := map[string]any{"jobId": id}
+	if warn := maxNodesWarn(maxNodes); warn != "" {
+		resp["warning"] = warn
+	}
+	writeJSON(w, 200, resp)
 }
 
 func (s *Server) runUpdate(id string, providers []string, maxNodes int, sub string) {
@@ -703,6 +795,9 @@ func (s *Server) runUpdate(id string, providers []string, maxNodes int, sub stri
 			j.Log = j.Log[len(j.Log)-jobKeep:]
 		}
 		s.mu.Unlock()
+	}
+	if warn := maxNodesWarn(maxNodes); warn != "" {
+		logf(warn)
 	}
 	rep, err := fetch.Update(fetch.Options{
 		Providers: providers, MaxNodes: maxNodes,

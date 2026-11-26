@@ -28,9 +28,13 @@ type Progress struct {
 	StartedAt int64    `json:"startedAt"` // 当前项开始 epoch ms（前端算本项耗时）
 }
 
+// MaxNodesHardLimit maxNodes 硬上限（CR-005）：超过报错——节点池现实
+// 规模远低于 999，五位数只可能是输错。>999 的软提示在 API 层发。
+const MaxNodesHardLimit = 9999
+
 type Options struct {
 	Providers  []string // 空 = 全部源
-	MaxNodes   int      // 探测节点上限，默认 25
+	MaxNodes   int      // 探测节点上限；0 = 缺省 999（实际等同全部），负数/超过 9999 报错
 	SubURL     string   // 代理订阅地址（空 = 仅直连）
 	ModelsPath string
 	DryRun     bool
@@ -65,8 +69,14 @@ func Update(o Options) (map[string]any, error) {
 		targets = SourceOrder
 	}
 	maxNodes := o.MaxNodes
-	if maxNodes <= 0 {
-		maxNodes = 25
+	if maxNodes < 0 {
+		return nil, fmt.Errorf("maxNodes 不能为负数")
+	}
+	if maxNodes > MaxNodesHardLimit {
+		return nil, fmt.Errorf("maxNodes 不能超过硬上限 %d：%d", MaxNodesHardLimit, maxNodes)
+	}
+	if maxNodes == 0 {
+		maxNodes = 999 // 零值 = 缺省：与 API 层 absent 语义一致（实际等同全部）
 	}
 	subDesc := "未配置代理订阅 → 仅直连"
 	if o.SubURL != "" {
@@ -198,21 +208,17 @@ func Update(o Options) (map[string]any, error) {
 				}
 			}
 			if len(nodes) > 0 {
-				// 胜出校验：200 之外还要能解析出价目行——地区限制/反爬页也返回 200。
-				validate := func(pid string, body []byte) bool {
-					src := Sources[pid]
-					if src.Parse == nil {
-						return true
-					}
-					rows, err := safeParse(src.Parse, string(body))
-					return err == nil && len(rows) > 0
-				}
+				validate := validWinnerBody
 				winners := map[string]proxypool.Winner{}
 				probed := map[string]bool{} // 本 run 已试节点（Key），冷路径不重复
 				// 温路径：1h 内测过的可用节点直接复用，逐目标「抓+校验」，
 				// 不重跑全池探测（点过「测试节点」再更新就靠这层省）。
 				if o.NodeCache != nil {
-					if usable := o.NodeCache.Usable(o.SubURL, nodes); len(usable) > 0 {
+					usable := o.NodeCache.Usable(o.SubURL, nodes)
+					if maxNodes > 0 && len(usable) > maxNodes {
+						usable = usable[:maxNodes]
+					}
+					if len(usable) > 0 {
 						log(fmt.Sprintf("节点缓存命中：%d 个近期可用节点直接复用", len(usable)))
 						for i, n := range usable {
 							if len(needProxy) == 0 {
@@ -348,14 +354,14 @@ func Update(o Options) (map[string]any, error) {
 		// 对齐 Python：备份失败则中止，禁止无备份覆盖
 		if bak, err := os.ReadFile(o.ModelsPath); err != nil {
 			return nil, fmt.Errorf("读 models.json 备份源失败: %w", err)
-		} else if err := writeFileAtomic(o.ModelsPath+".bak", bak, 0o644); err != nil {
+		} else if err := writeFileAtomic(o.ModelsPath+".bak", bak, filePermission(o.ModelsPath, 0o644)); err != nil {
 			return nil, fmt.Errorf("写 models.json.bak 失败: %w", err)
 		}
 		out, err := dataset.Marshal()
 		if err != nil {
 			return nil, err
 		}
-		if err := writeFileAtomic(o.ModelsPath, out, 0o644); err != nil {
+		if err := writeFileAtomic(o.ModelsPath, out, filePermission(o.ModelsPath, 0o644)); err != nil {
 			return nil, err
 		}
 		log("已写回 models.json（备份 models.json.bak）")
@@ -364,6 +370,13 @@ func Update(o Options) (map[string]any, error) {
 	}
 	report["changed"] = changed
 	return report, nil
+}
+
+func filePermission(path string, fallback os.FileMode) os.FileMode {
+	if info, err := os.Stat(path); err == nil {
+		return info.Mode().Perm()
+	}
+	return fallback
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
@@ -389,6 +402,22 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// validWinnerBody 代理胜出校验：200 + 最小正文 + 能解析出价目行——
+// 地区限制/反爬页也返回 200，JS 空壳页只有几百 B。字节门槛必须在校验
+// 内部：否则小 body 胜出后厂商被移出待决清单，最终门槛再丢弃，落得
+// 既不合并也不在 unreachable 的三不管状态。温/冷路径共用本函数。
+func validWinnerBody(pid string, body []byte) bool {
+	if len(body) <= minPricingBytes {
+		return false
+	}
+	src := Sources[pid]
+	if src.Parse == nil {
+		return true
+	}
+	rows, err := safeParse(src.Parse, string(body))
+	return err == nil && len(rows) > 0
 }
 
 // parsesEmpty 判"页面虽返回 200/>500B 但解析不出任何价目行"——地区限制、
@@ -475,8 +504,13 @@ func (d *Dataset) MergeProvider(providerID string, rows []Row, today string) map
 		}
 	}
 	missing := []string{}
-	for mid := range existing {
-		if !rowIDs[mid] {
+	for _, model := range models {
+		m, ok := model.(map[string]any)
+		if !ok {
+			continue
+		}
+		mid, ok := m["id"].(string)
+		if ok && !rowIDs[mid] {
 			missing = append(missing, mid)
 		}
 	}

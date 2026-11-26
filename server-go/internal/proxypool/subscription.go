@@ -127,7 +127,9 @@ func decodeSubscription(body string) (text, how string) {
 		}
 	}
 	// 无 padding / URL 安全变体
-	for _, enc := range []*base64.Encoding{base64.RawStdEncoding, base64.RawURLEncoding} {
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding,
+	} {
 		if b, err := enc.DecodeString(compact); err == nil {
 			s := string(b)
 			if strings.Contains(s, "://") {
@@ -153,6 +155,14 @@ func parseNodeURI(u string) (*Node, error) {
 	return nil, fmt.Errorf("unsupported scheme %s", scheme)
 }
 
+func nodePort(raw string) (int, error) {
+	port, err := strconv.Atoi(raw)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("bad port")
+	}
+	return port, nil
+}
+
 func parseVLESS(rest, raw string) (*Node, error) {
 	pu, err := url.Parse("vless://" + rest)
 	if err != nil {
@@ -162,11 +172,17 @@ func parseVLESS(rest, raw string) (*Node, error) {
 	if !strings.EqualFold(q.Get("security"), "reality") {
 		return nil, fmt.Errorf("vless 非 reality（security=%q）", q.Get("security"))
 	}
-	port, err := strconv.Atoi(pu.Port())
-	if err != nil || port <= 0 {
-		return nil, fmt.Errorf("bad port")
+	port, err := nodePort(pu.Port())
+	if err != nil {
+		return nil, err
 	}
-	uuid, _ := url.QueryUnescape(pu.User.Username()) // userinfo 可能带 %XX，显式解码
+	if pu.Hostname() == "" || pu.User == nil {
+		return nil, fmt.Errorf("vless 缺少服务器或 UUID")
+	}
+	uuid := pu.User.Username()
+	if uuid == "" || q.Get("pbk") == "" {
+		return nil, fmt.Errorf("vless 缺少 UUID 或 Reality public_key")
+	}
 	out := map[string]any{
 		"type": "vless", "tag": "out",
 		"server": pu.Hostname(), "server_port": port,
@@ -217,11 +233,17 @@ func parseHY2(rest, raw string) (*Node, error) {
 		return nil, err
 	}
 	q := pu.Query()
-	port, err := strconv.Atoi(pu.Port())
-	if err != nil || port <= 0 {
-		return nil, fmt.Errorf("bad port")
+	port, err := nodePort(pu.Port())
+	if err != nil {
+		return nil, err
 	}
-	pw, _ := url.QueryUnescape(pu.User.Username()) // 密码可能含 %XX 编码字符，显式解码
+	if pu.Hostname() == "" || pu.User == nil {
+		return nil, fmt.Errorf("hysteria2 缺少服务器或密码")
+	}
+	pw := pu.User.Username()
+	if pw == "" {
+		return nil, fmt.Errorf("hysteria2 缺少密码")
+	}
 	out := map[string]any{
 		"type": "hysteria2", "tag": "out",
 		"server": pu.Hostname(), "server_port": port,
@@ -234,9 +256,26 @@ func parseHY2(rest, raw string) (*Node, error) {
 	if mport := q.Get("mport"); mport != "" { // 端口跳跃 "443-449,500" → "443:449","500"
 		var ports []any
 		for _, p := range strings.Split(mport, ",") {
-			if p = strings.TrimSpace(p); p != "" {
-				ports = append(ports, strings.ReplaceAll(p, "-", ":"))
+			bounds := strings.Split(strings.TrimSpace(p), "-")
+			if len(bounds) == 1 {
+				if _, err := nodePort(bounds[0]); err != nil {
+					return nil, err
+				}
+				ports = append(ports, bounds[0])
+				continue
 			}
+			if len(bounds) != 2 {
+				return nil, fmt.Errorf("bad mport")
+			}
+			lo, err := nodePort(bounds[0])
+			if err != nil {
+				return nil, err
+			}
+			hi, err := nodePort(bounds[1])
+			if err != nil || lo > hi {
+				return nil, fmt.Errorf("bad mport")
+			}
+			ports = append(ports, fmt.Sprintf("%d:%d", lo, hi))
 		}
 		if len(ports) > 0 {
 			out["server_ports"] = ports

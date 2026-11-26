@@ -76,7 +76,7 @@ go run ./tools/syncassets
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "with_utls with_quic" -o aipc-server ./cmd/server
 ```
 
-产物 ~49MB（内嵌 sing-box）。部署步骤见 `DEPLOYMENT.md`（systemd + nginx）。
+产物约 55MB（内嵌 sing-box，含 uTLS+QUIC tags；实际大小随依赖与平台变化）。部署步骤见 `DEPLOYMENT.md`（systemd + nginx）。
 
 ## 目录
 

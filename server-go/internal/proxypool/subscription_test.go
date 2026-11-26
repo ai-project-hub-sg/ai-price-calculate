@@ -23,6 +23,9 @@ func TestDecodeSubscriptionVariants(t *testing.T) {
 		"urlsafe": func(s string) string {
 			return base64.RawURLEncoding.EncodeToString([]byte(s))
 		},
+		"paddedurlsafe": func(s string) string {
+			return base64.URLEncoding.EncodeToString([]byte(s))
+		},
 		"plain": func(s string) string { return s },
 	} {
 		text, how := decodeSubscription(enc(subBody))
@@ -35,7 +38,30 @@ func TestDecodeSubscriptionVariants(t *testing.T) {
 	}
 }
 
-// vless+reality URI → sing-box outbound 字段逐项核对（含 userinfo %XX 解码）。
+func TestDecodePaddedURLSafe(t *testing.T) {
+	plain := string([]byte{0xfb, 0xff}) + subBody
+	text, how := decodeSubscription(base64.URLEncoding.EncodeToString([]byte(plain)))
+	if text != plain || !strings.Contains(how, "URL安全") {
+		t.Fatalf("padded URL-safe base64 not decoded: how=%s", how)
+	}
+}
+
+func TestUserinfoDecodedOnce(t *testing.T) {
+	n, err := parseNodeURI("hysteria2://a%2Bb@5.6.7.8:443#x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := n.Outbound["password"]; got != "a+b" {
+		t.Fatalf("password = %q, want a+b", got)
+	}
+	n, err = parseNodeURI("hysteria2://a+b@5.6.7.8:443#x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := n.Outbound["password"]; got != "a+b" {
+		t.Fatalf("literal plus password = %q, want a+b", got)
+	}
+}
 func TestParseVLESS(t *testing.T) {
 	n, err := parseNodeURI("vless://a1b2c3d4-0000-1111-2222-333344445555@1.2.3.4:443" +
 		"?security=reality&pbk=PUBKEY&sid=ab12&sni=www.microsoft.com&fp=firefox" +
@@ -105,10 +131,18 @@ func TestParseHY2(t *testing.T) {
 // 拒绝路径：非 reality vless、未知 scheme、坏端口——显式报错不静默。
 func TestParseNodeURIRejects(t *testing.T) {
 	for _, u := range []string{
-		"vless://uuid@1.2.3.4:443?security=tls#x",     // 非 reality
-		"ss://method:pass@1.2.3.4:8388#x",             // 未知 scheme
+		"vless://uuid@1.2.3.4:443?security=tls#x", // 非 reality
+		"ss://method:pass@1.2.3.4:8388#x",         // 未知 scheme
 		"vless://uuid@1.2.3.4:notaport?security=reality&pbk=k#x",
 		"hysteria2://pw@1.2.3.4:0#x",
+		"hysteria2://pw@1.2.3.4:65536#x",
+		"hysteria2://pw@:443#x",
+		"hysteria2://@1.2.3.4:443#x",
+		"hysteria2://pw@1.2.3.4:443?mport=443-70000#x",
+		"hysteria2://pw@1.2.3.4:443?mport=500-400#x",
+		"vless://@1.2.3.4:443?security=reality&pbk=k#x",
+		"vless://uuid@:443?security=reality&pbk=k#x",
+		"vless://uuid@1.2.3.4:443?security=reality#x",
 	} {
 		if _, err := parseNodeURI(u); err == nil {
 			t.Errorf("应拒绝但未拒绝: %s", u)
@@ -132,5 +166,31 @@ func TestLoadSubscription(t *testing.T) {
 	}
 	if nodes[0].Kind != "vless-reality" || nodes[1].Kind != "hysteria2" {
 		t.Errorf("排序不符: %v / %v", nodes[0].Kind, nodes[1].Kind)
+	}
+}
+
+func TestLoadSubscriptionErrorRedactsURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	secretURL := srv.URL + "/sub?token=REVIEW_SECRET"
+	_, err := LoadSubscription(secretURL, nil)
+	if err == nil {
+		t.Fatal("expected subscription error")
+	}
+	if strings.Contains(err.Error(), "REVIEW_SECRET") || strings.Contains(err.Error(), secretURL) {
+		t.Fatalf("subscription URL leaked in error: %v", err)
+	}
+}
+
+func TestNetworkErrorRedactsSubscriptionURL(t *testing.T) {
+	secretURL := "http://127.0.0.1:1/sub?token=REVIEW_SECRET"
+	result := FetchURL(secretURL, 0, 100)
+	if result.Error == "" {
+		t.Fatal("expected network error")
+	}
+	if strings.Contains(result.Error, "REVIEW_SECRET") || strings.Contains(result.Error, secretURL) {
+		t.Fatalf("network error leaked subscription URL: %s", result.Error)
 	}
 }

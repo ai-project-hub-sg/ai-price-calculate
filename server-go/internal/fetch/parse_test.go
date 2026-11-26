@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+func TestXAIUnknownContextIsNull(t *testing.T) {
+	rows := ParseXAI("| grok-test (< 200k prompt tokens) | unknown | $1 | $0.1 | $2 |")
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if value, exists := rows[0]["contextWindow"]; !exists || value != nil {
+		t.Fatalf("contextWindow = %v (exists=%v), want explicit null", value, exists)
+	}
+}
+
 // 对照测试：Go 解析器输出必须与 Python fetcher.py 对同一 fixture 的
 // 解析结果（*.expected.json，由 Python 生成）完全一致。
 func TestParsersMatchPython(t *testing.T) {

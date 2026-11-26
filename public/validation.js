@@ -9,7 +9,7 @@
     if (typeof value !== 'string') throw new Error('URL 格式错误');
     const raw = value.trim();
     if (!raw) return '';
-    if (raw.length > 4096 || /\s/.test(raw) || /%(?![0-9a-f]{2})/i.test(raw)) throw new Error('URL 格式错误');
+    if (new TextEncoder().encode(raw).length > 4096 || /\s/.test(raw) || /%(?![0-9a-f]{2})/i.test(raw)) throw new Error('URL 格式错误');
     let parsed;
     try {
       parsed = new URL(raw);

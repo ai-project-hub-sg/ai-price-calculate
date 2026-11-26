@@ -206,6 +206,14 @@ class AppServerTests(unittest.TestCase):
         self.assertIn("error", payload)
         self.assertEqual(self.config_path.read_bytes(), original)
 
+    def test_subscription_url_limit_counts_utf8_bytes(self):
+        prefix = "https://example.invalid/"
+        accepted = prefix + "é" * 2000
+        rejected = prefix + "é" * 2100
+        self.assertEqual(app.validation.validate_proxy_url(accepted), accepted)
+        with self.assertRaisesRegex(ValueError, "URL 格式错误"):
+            app.validation.validate_proxy_url(rejected)
+
     def test_config_subscription_validation_and_empty_values(self):
         original = {"marker": "original", "proxySubscription": ""}
         self.config_path.write_text(json.dumps(original), encoding="utf-8")
@@ -306,6 +314,98 @@ class AppServerTests(unittest.TestCase):
             cache.assert_not_called()
             self.assertEqual(len(run.call_args.args), 3)
 
+    def test_job_input_validation_does_not_start_jobs(self):
+        token = self.login()
+        for path in ("/api/pricing/update", "/api/nodes/test"):
+            for value in (-1, 0, 1.5, 25.1, "3", True, 10000, 99999, 1e20):
+                with self.subTest(path=path, maxNodes=value):
+                    status, payload, _ = self.request_json(
+                        "POST", path, {"maxNodes": value}, token=token)
+                    self.assertEqual(status, 400)
+                    self.assertIn("maxNodes", payload["error"])
+                    # 报错必须告诉用户什么是正确输入（缺省 999 等同全部）
+                    self.assertIn("999", payload["error"])
+            # 超硬上限 9999 的报错须带「是否输入出错」提示（CR-005）
+            status, payload, _ = self.request_json(
+                "POST", path, {"maxNodes": 10000}, token=token)
+            self.assertEqual(status, 400)
+            self.assertIn("是否输入出错", payload["error"])
+        for value in ("xai", ["xai", 1], {}):
+            with self.subTest(providers=value):
+                status, payload, _ = self.request_json(
+                    "POST", "/api/pricing/update", {"providers": value}, token=token)
+                self.assertEqual(status, 400)
+                self.assertIn("providers", payload["error"])
+        with app._JOBS_LOCK:
+            self.assertEqual(app._JOBS, {})
+
+    def test_max_nodes_accepts_integral_values_and_defaults(self):
+        """整数值接受（25.0→25、7→7），缺省/null→999（实际等同全部）。
+        是「整数值」而非「允许浮点」——25.1 在上方 400 矩阵中。"""
+        token = self.login()
+        captured = []
+
+        def fake_update(providers, **kwargs):
+            captured.append(kwargs.get("max_nodes"))
+            return {"offline": True}
+
+        with mock.patch.object(app.fetcher, "update", side_effect=fake_update):
+            for body, want in (({"maxNodes": 25.0}, 25), ({"maxNodes": 7}, 7),
+                               ({}, 999), ({"maxNodes": None}, 999),
+                               ({"maxNodes": 9999}, 9999)):
+                with self.subTest(body=body):
+                    status, payload, _ = self.request_json(
+                        "POST", "/api/pricing/update", body, token=token)
+                    self.assertEqual(status, 200)
+                    job_id = payload["jobId"]
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        st, job, _ = self.request_json(
+                            "GET", f"/api/jobs/{job_id}", token=token)
+                        if st == 200 and job["status"] == "done":
+                            break
+                        time.sleep(0.01)
+                    else:
+                        self.fail("job did not finish")
+                    self.assertEqual(captured[-1], want)
+        self.assertEqual(captured, [25, 7, 999, 999, 9999])
+
+    def test_max_nodes_warning_surfaces(self):
+        """CR-005 告警区间 999<n≤9999：响应带 warning 字段且 job 日志首行
+        警告「是否输入出错」；≤999 不带 warning 字段。"""
+        token = self.login()
+        with mock.patch.object(app.fetcher, "update",
+                               side_effect=lambda providers, **kw: {"offline": True}):
+            status, payload, _ = self.request_json(
+                "POST", "/api/pricing/update", {"maxNodes": 1500}, token=token)
+            self.assertEqual(status, 200)
+            self.assertIn("是否输入出错", payload["warning"])
+            self.assertIn("9999", payload["warning"])
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                st, job, _ = self.request_json(
+                    "GET", f"/api/jobs/{payload['jobId']}", token=token)
+                if st == 200 and job["status"] == "done":
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail("job did not finish")
+            self.assertIn("是否输入出错", job["log"][0])
+
+            status, payload, _ = self.request_json(
+                "POST", "/api/pricing/update", {"maxNodes": 999}, token=token)
+            self.assertEqual(status, 200)
+            self.assertNotIn("warning", payload)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                st, job, _ = self.request_json(
+                    "GET", f"/api/jobs/{payload['jobId']}", token=token)
+                if st == 200 and job["status"] == "done":
+                    break
+                time.sleep(0.01)
+            else:
+                self.fail("job did not finish")
+
     def test_shutdown_rejects_running_job(self):
         token = self.login()
         started = threading.Event()
@@ -360,6 +460,47 @@ class AppServerTests(unittest.TestCase):
                 app.main()
         self.assertIn("启动失败", str(caught.exception))
         self.assertIn("AIPC_ADMIN_PASSWORD", str(caught.exception))
+
+
+    def test_fx_refresh_and_invalid_cache(self):
+        token = self.login()
+        cache = {
+            "ts": time.time(),
+            "data": {"rate": 7.2, "source": "cached", "fetchedAt": "today"},
+        }
+        (self.data / "fx-cache.json").write_text(json.dumps(cache), encoding="utf-8")
+        status, payload, _ = self.request_json(
+            "GET", "/api/fx", token=token)
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["cached"])
+
+        calls = []
+
+        def fake_fetch(url, proxy_port, timeout):
+            calls.append(url)
+            body = json.dumps({"rates": {"CNY": 7.3},
+                               "time_last_update_utc": "now"}).encode()
+            return {"status": 200, "body": body}
+
+        with mock.patch.object(app.nodepool, "fetch_url", side_effect=fake_fetch):
+            status, payload, _ = self.request_json(
+                "GET", "/api/fx?refresh=1", token=token)
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["rate"], 7.3)
+            self.assertFalse(payload["cached"])
+            cache["data"]["rate"] = 0
+            (self.data / "fx-cache.json").write_text(
+                json.dumps(cache), encoding="utf-8")
+            status, payload, _ = self.request_json(
+                "GET", "/api/fx", token=token)
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["rate"], 7.3)
+        self.assertEqual(len(calls), 2)
+
+        for rate in (None, True, "7.3", 0, -1, float("nan"), float("inf")):
+            with self.subTest(rate=rate):
+                self.assertFalse(app._valid_fx_data({"rate": rate}))
+        self.assertTrue(app._valid_fx_data({"rate": 7.3}))
 
 
 class FetcherAtomicWriteTests(unittest.TestCase):

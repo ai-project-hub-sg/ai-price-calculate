@@ -8,9 +8,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -106,6 +108,9 @@ func topLevelKeys(raw []byte) []string {
 
 // Provider 返回 provider 的已解析视图（首次访问时解析 raw，标记 dirty）。
 // 合并代码只应通过本方法取得可写副本。
+// 解码保留 Python 数字类型语义：整数词法（64000）→ int64，小数/指数
+// 词法（2.0、1e-7）→ float64——encoding/json 默认全解 float64 会丢失
+// int/float 区分，写回时无论怎么格式化都必然错一侧（64000.0 或 2 而非 2.0）。
 func (d *Dataset) Provider(id string) map[string]any {
 	if p, ok := d.provs[id]; ok {
 		return p
@@ -114,13 +119,62 @@ func (d *Dataset) Provider(id string) map[string]any {
 	if !ok {
 		return nil
 	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := dec.Decode(&m); err != nil {
 		return nil
 	}
+	normalizeNumbers(m)
 	d.provs[id] = m
 	d.dirty[id] = true
 	return m
+}
+
+// normalizeNumbers 把 UseNumber 解出的 json.Number 按 Python json.loads
+// 规则分流：无小数点/指数的词法 → int64，否则 → float64。递归原地改写。
+func normalizeNumbers(v any) any {
+	switch t := v.(type) {
+	case json.Number:
+		s := string(t)
+		if isIntLexeme(s) {
+			if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+				return i
+			}
+			// 超 int64：Python int 任意精度，Go 无内建——保留 json.Number
+			// 原词法直通（Marshal 原样写出），字节与 Python 一致、零精度损失
+			return t
+		}
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+		return t // 防御：解码器已保证合法数字；原样直通交 Marshal 校验
+	case map[string]any:
+		for k, val := range t {
+			t[k] = normalizeNumbers(val)
+		}
+		return t
+	case []any:
+		for i, val := range t {
+			t[i] = normalizeNumbers(val)
+		}
+		return t
+	default:
+		return v
+	}
+}
+
+// isIntLexeme Python int 词法：可选负号 + 纯数字，无小数点无指数。
+func isIntLexeme(s string) bool {
+	for i, r := range s {
+		if i == 0 && r == '-' {
+			continue
+		}
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // Marshal 写回：meta 与未 dirty provider 原样；dirty provider canonical 序。
@@ -288,12 +342,16 @@ func writeValue(b *bytes.Buffer, v any, depth int) error {
 		} else {
 			b.WriteString("false")
 		}
-	case float64, float32, int, int64, int32, uint64:
-		raw, err := json.Marshal(t) // encoding/json 的数字格式（1050000 而非 1.05e+06）
+	case json.Number:
+		// 超 int64 整数等保留的原词法：Marshal 校验合法性后原样写出，
+		// 与 Python 任意精度 int 的输出字节一致。
+		raw, err := json.Marshal(t)
 		if err != nil {
 			return err
 		}
 		b.Write(raw)
+	case float64, float32, int, int64, int32, uint64:
+		return writeNumber(b, t)
 	default:
 		rv := reflect.ValueOf(v)
 		if rv.IsValid() && (rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array) {
@@ -302,6 +360,97 @@ func writeValue(b *bytes.Buffer, v any, depth int) error {
 		return fmt.Errorf("unsupported JSON value type %T", v)
 	}
 	return nil
+}
+
+func writeNumber(b *bytes.Buffer, v any) error {
+	switch n := v.(type) {
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return fmt.Errorf("unsupported JSON number %v", n)
+		}
+		b.WriteString(pyFloatRepr(n))
+	case float32:
+		if math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) {
+			return fmt.Errorf("unsupported JSON number %v", n)
+		}
+		b.WriteString(pyFloatRepr(float64(n)))
+	case int:
+		b.WriteString(strconv.Itoa(n))
+	case int64:
+		b.WriteString(strconv.FormatInt(n, 10))
+	case int32:
+		b.WriteString(strconv.FormatInt(int64(n), 10))
+	case uint64:
+		b.WriteString(strconv.FormatUint(n, 10))
+	default:
+		encoded, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		b.Write(encoded)
+	}
+	return nil
+}
+
+// pyFloatRepr 按 CPython repr/json.dumps 规则格式化 float64：
+// 最短回退数字（Go 与 CPython 相同）+ 指数 < -4 或 >= 16 用科学计数法
+// （指数带符号、至少两位补零），其余十进制定点、integral 补 ".0"。
+// 例：2.0→"2.0" 64000.0→"64000.0" 0.0001→"0.0001" 1e-5→"1e-05"
+// 1e15→"1000000000000000.0" 1e16→"1e+16"
+func pyFloatRepr(f float64) string {
+	if f == 0 {
+		if math.Signbit(f) {
+			return "-0.0"
+		}
+		return "0.0"
+	}
+	// 'e' 格式精度 -1 产出最短回退数字，形如 [-]d[.ddd]e±xx，据此取数字与指数
+	s := strconv.FormatFloat(f, 'e', -1, 64)
+	neg := strings.HasPrefix(s, "-")
+	body := strings.TrimPrefix(s, "-")
+	eIdx := strings.IndexByte(body, 'e')
+	mantissa := body[:eIdx]
+	exp, _ := strconv.Atoi(body[eIdx+1:])
+	digits := strings.Replace(mantissa, ".", "", 1)
+
+	if exp < -4 || exp >= 16 {
+		// 科学计数法：系数单数字时不补 .0（Python repr(1e16)='1e+16'）
+		var coef string
+		if len(digits) == 1 {
+			coef = digits
+		} else {
+			coef = digits[:1] + "." + digits[1:]
+		}
+		sign := "+"
+		ae := exp
+		if ae < 0 {
+			sign, ae = "-", -ae
+		}
+		es := strconv.Itoa(ae)
+		if len(es) < 2 {
+			es = "0" + es
+		}
+		out := coef + "e" + sign + es
+		if neg {
+			return "-" + out
+		}
+		return out
+	}
+
+	// 定点：digits 首位对应 10^exp
+	var out string
+	switch {
+	case exp >= len(digits)-1: // 整数（可能补零），integral float 补 .0
+		out = digits + strings.Repeat("0", exp-len(digits)+1) + ".0"
+	case exp >= 0: // 小数点在数字内部
+		out = digits[:exp+1] + "." + digits[exp+1:]
+	default: // 0.00xx
+		out = "0." + strings.Repeat("0", -exp-1) + digits
+	}
+	if neg {
+		return "-" + out
+	}
+	return out
 }
 
 func writeMap(b *bytes.Buffer, m map[string]any, depth int) error {

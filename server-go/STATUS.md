@@ -1,12 +1,14 @@
 # Go 版移植 — 会话状态与坑记录
 
 > 用途：跨会话交接。每次动 `server-go/` 前先读本文件 + `docs/DUAL_IMPLEMENTATION.md`。
-> 最近更新：2026-11-25（fix/go-port-hardening，安全加固待用户核验）
+> 最近更新：2026-11-26（fix/go-port-review-fixes，CR-003 + CR-004 + CR-005 待用户核验）
 
 ## 当前状态
 
-- `feat/go-port` 仍是待核验基线；安全修复位于独立分支 `fix/go-port-hardening`，尚未合并、push 或申请 PR。
-- 修复分支已实现双后端管理员登录/Bearer 鉴权、Windows 凭据管理器读取、订阅 URL 双重校验、配置/models 原子写、更新串行化、job 快照与停机竞态修复。
+- `feat/go-port` 是审查基线；本轮修复位于独立分支 `fix/go-port-review-fixes`（基线 `83b6c06`），**未合并、未申请 PR**。
+- CR-003 覆盖配置保存错误、订阅凭证脱敏、严格 job 参数、FX 缓存/刷新、可执行文件数据目录、HTTP 超时、PBKDF2 锁粒度、失败记录清理、节点 panic 恢复、Transport 清理、URI/Base64 解析、merge 顺序与文件权限。
+- CR-004 补完：代理胜出字节门槛内嵌 validate（温/冷/直连同标准，Python 同修）；`maxNodes` 无魔法值（缺省 999 等同全部，正整数值，`0`/负数/`25.1` 报 400）；数字写回改类型保留解码 + CPython repr；双端统一 canonical 键序 + 逐字节对拍守门；`data/models.json` 已一次性键序归一化（纯顺序零内容变化）。
+- CR-005 maxNodes 上限：`999<x≤9999` 接受但响应 `warning`+job 日志提示「是否输入出错」，`>9999` 400；Go 常量 `fetch.MaxNodesHardLimit`、Python 常量 `nodepool.MAX_NODES_WARN/LIMIT`（fetcher/app/CLI 同源）；`python -m server.fetcher --max-nodes` 与 `python -m server.nodepool N` 同规则。
 - 所有后端 API（除登录、OPTIONS、静态资源）需 token；前端只存 sessionStorage。CORS 按用户要求保持 `*`。
 - 启动必须配置 `AIPC_ADMIN_USERNAME`/`AIPC_ADMIN_PASSWORD`；Windows 两者均未设置时读取凭据管理器 `aipc-server/admin`。无默认密码。
 - Python 侧同步鉴权、原子写、job 深拷贝与信号停机；节点来源仍与 Go 有意不同。
@@ -63,10 +65,10 @@ anthropic 直连 307→`app-unavailable-in-region` 311271B 落地页：200、>50
 
 - [x] 历史用户重测：订阅区按钮、测试节点、价目更新链路、进度显示、关闭服务（无鉴权基线）
 - [x] 历史 push `feat/go-port`（既有授权，15 提交全 `notebook` 身份、0 AI 署名、无二进制被追踪）
-- [x] 修复分支离线单测/race/vet/tags/Linux+Windows 交叉编译、syncassets 与未登录浏览器检查
+- [x] 前序 `fix/go-port-hardening` 离线单测/race/vet/tags/Linux+Windows 交叉编译、syncassets 与未登录浏览器检查
 - [x] 隔离实例鉴权 API 冒烟；登录后完整 UI 流程仍待用户人工核验
 - [ ] Windows Credential Manager 真实读取；Linux 目标机 systemd/nginx 与真实订阅端到端
-- [ ] 用户核验修复分支 → 合并 `feat/go-port` → 完成合并提交后再申请 PR（本次未获 push 授权）
+- [ ] 用户核验 `fix/go-port-review-fixes` 后由用户合并 `feat/go-port`；本轮不执行 merge
 - [ ] 「not found」若再现 → 拿服务端日志定位
 
 ## 环境

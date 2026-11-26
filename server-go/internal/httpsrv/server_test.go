@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -590,5 +591,184 @@ func TestShutdownConflictWaitForJobsAndPanicRecovery(t *testing.T) {
 	}
 	if panicked.Status != "error" || !strings.Contains(panicked.Error, "offline boom") {
 		t.Fatalf("panic was not recorded: %+v", panicked)
+	}
+}
+
+func TestJobInputValidation(t *testing.T) {
+	server, _, handler := newTestServer(t)
+	token := loginToken(t, handler)
+	cases := []struct {
+		path string
+		body string
+	}{
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":"25"}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":-1}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":0}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":1.5}`},
+		{"/api/nodes/test", `{"url":"https://example.com/sub","maxNodes":25.1}`},
+		{"/api/pricing/update", `{"providers":"openai"}`},
+		{"/api/pricing/update", `{"providers":["openai",7]}`},
+		{"/api/pricing/update", `{"maxNodes":false}`},
+	}
+	for _, tc := range cases {
+		rec := performRequest(handler, http.MethodPost, tc.path, tc.body, token)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s %s status = %d, want 400; body = %s",
+				tc.path, tc.body, rec.Code, rec.Body.String())
+		}
+		requireErrorJSON(t, rec)
+	}
+	if got := jobCount(server); got != 0 {
+		t.Fatalf("invalid requests started %d jobs", got)
+	}
+}
+
+// parseMaxNodes 整数值语义：25.0 与 25 同义（JSON 数字到 Go 皆是 float64），
+// 缺省/null → 999（实际等同全部）；0/负数/非整数值/非数字拒绝。
+// 是「整数值」而非「允许浮点」——没有 25.1 个节点。
+// CR-005 上限：>9999 直接拒绝（极限大值只可能是输错），999<x≤9999 接受
+// 但由 maxNodesWarn 向用户提示「是否输入出错」。
+func TestParseMaxNodes(t *testing.T) {
+	valid := []struct {
+		name string
+		body map[string]any
+		want int
+	}{
+		{"缺省", map[string]any{}, 999},
+		{"null", map[string]any{"maxNodes": nil}, 999},
+		{"整数", map[string]any{"maxNodes": float64(7)}, 7},
+		{"整数值浮点", map[string]any{"maxNodes": float64(25.0)}, 25},
+		{"告警区间下边界", map[string]any{"maxNodes": float64(1000)}, 1000},
+		{"硬上限边界", map[string]any{"maxNodes": float64(9999)}, 9999},
+		{"硬上限整数值浮点", map[string]any{"maxNodes": float64(9999.0)}, 9999},
+	}
+	for _, c := range valid {
+		got, err := parseMaxNodes(c.body)
+		if err != nil || got != c.want {
+			t.Errorf("%s: parseMaxNodes = %d, %v; want %d", c.name, got, err, c.want)
+		}
+	}
+	invalid := []any{float64(0), float64(-5), float64(25.1), "25", true,
+		float64(10000), float64(99999), float64(1e20), float64(9999.5)}
+	for _, v := range invalid {
+		if _, err := parseMaxNodes(map[string]any{"maxNodes": v}); err == nil {
+			t.Errorf("maxNodes=%v 应报错", v)
+		} else if !strings.Contains(err.Error(), "999") {
+			t.Errorf("maxNodes=%v 报错应说明正确输入（缺省 999）: %s", v, err.Error())
+		}
+	}
+	// 超硬上限的报错须带「是否输入出错」提示
+	if _, err := parseMaxNodes(map[string]any{"maxNodes": float64(10000)}); err == nil ||
+		!strings.Contains(err.Error(), "是否输入出错") {
+		t.Errorf("maxNodes=10000 报错应含「是否输入出错」: %v", err)
+	}
+}
+
+// maxNodesWarn 软上限提示：≤999 静默，>999 给「是否输入出错」文案。
+func TestMaxNodesWarn(t *testing.T) {
+	for _, n := range []int{1, 25, 999} {
+		if w := maxNodesWarn(n); w != "" {
+			t.Errorf("maxNodesWarn(%d) = %q，应静默", n, w)
+		}
+	}
+	for _, n := range []int{1000, 5000, 9999} {
+		w := maxNodesWarn(n)
+		if !strings.Contains(w, "是否输入出错") || !strings.Contains(w, "9999") {
+			t.Errorf("maxNodesWarn(%d) = %q，应含输错提示与硬上限", n, w)
+		}
+	}
+}
+
+// 告警区间的提示须到达用户：POST 响应 warning 字段 + job 日志首行
+// （nodes/test 走缓存命中路径也要记）。>9999 连 job 都不创建（400）。
+func TestMaxNodesWarningSurfaces(t *testing.T) {
+	server, _, handler := newTestServer(t)
+	token := loginToken(t, handler)
+
+	// 预热缓存使 nodes/test 秒回（不拉外网）；损坏 models.json 使 update
+	// 立即失败——只验证响应与 job 日志携带 warning，不依赖任务结果。
+	sub := "https://example.invalid/sub"
+	server.nodeCache.MarkTestDone(sub, []proxypool.NodeTestResult{{ID: "n-0", Kind: "vless-reality", OK: true}})
+	if err := os.WriteFile(server.modelsPath(), []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, path, body string
+	}{
+		{"nodes/test 告警区间（缓存命中）", "/api/nodes/test", fmt.Sprintf(`{"url":%q,"maxNodes":1500}`, sub)},
+		{"pricing/update 硬上限边界", "/api/pricing/update", `{"maxNodes":9999}`},
+	} {
+		rec := performRequest(handler, http.MethodPost, tc.path, tc.body, token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status = %d; body = %s", tc.name, rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		warn, _ := resp["warning"].(string)
+		if !strings.Contains(warn, "是否输入出错") || !strings.Contains(warn, "9999") {
+			t.Fatalf("%s warning = %q", tc.name, warn)
+		}
+		jobID, _ := resp["jobId"].(string)
+		waitForJobs(t, server)
+		jobRec := performRequest(handler, http.MethodGet, "/api/jobs/"+jobID, "", token)
+		var snap job
+		if err := json.Unmarshal(jobRec.Body.Bytes(), &snap); err != nil {
+			t.Fatal(err)
+		}
+		if len(snap.Log) == 0 || !strings.Contains(snap.Log[0], "是否输入出错") {
+			t.Fatalf("%s job log[0] = %v，应含警告", tc.name, snap.Log)
+		}
+	}
+
+	// 常用区间内不带 warning 字段；超硬上限 400 且不创建 job。
+	rec := performRequest(handler, http.MethodPost, "/api/nodes/test",
+		fmt.Sprintf(`{"url":%q,"maxNodes":999}`, sub), token)
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := resp["warning"]; has {
+		t.Fatalf("maxNodes=999 不应带 warning: %s", rec.Body.String())
+	}
+	waitForJobs(t, server)
+	before := jobCount(server)
+	over := performRequest(handler, http.MethodPost, "/api/nodes/test",
+		fmt.Sprintf(`{"url":%q,"maxNodes":10000}`, sub), token)
+	if over.Code != http.StatusBadRequest {
+		t.Fatalf("maxNodes=10000 status = %d，应 400", over.Code)
+	}
+	requireErrorJSON(t, over)
+	if got := jobCount(server); got != before {
+		t.Fatalf("超硬上限请求创建了 job（%d → %d）", before, got)
+	}
+}
+
+func TestFXCacheValidation(t *testing.T) {
+	server, _, handler := newTestServer(t)
+	token := loginToken(t, handler)
+	if err := os.WriteFile(server.fxPath(), []byte(`{"ts":`+fmt.Sprint(time.Now().Unix())+
+		`,"data":{"rate":7.2,"source":"cached","fetchedAt":"today"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := performRequest(handler, http.MethodGet, "/api/fx", "", token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("valid cache status = %d; body = %s", rec.Code, rec.Body.String())
+	}
+	var data map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if data["rate"] != 7.2 || data["cached"] != true {
+		t.Fatalf("valid cache not returned: %v", data)
+	}
+	for _, rate := range []any{nil, true, "7.2", float64(0), -1, math.NaN(), math.Inf(1)} {
+		if validFXData(map[string]any{"rate": rate}) {
+			t.Errorf("invalid FX rate accepted: %v", rate)
+		}
+	}
+	if !validFXData(map[string]any{"rate": 7.2}) {
+		t.Fatal("positive finite FX rate rejected")
 	}
 }

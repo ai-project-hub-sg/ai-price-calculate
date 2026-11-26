@@ -39,8 +39,8 @@
             {
               "upToTokens": null,
               "input": 0.3,
-              "cacheRead": 0.006,
-              "output": 1.2
+              "output": 1.2,
+              "cacheRead": 0.006
             }
           ],
           "notes": "表内为高峰价；非高峰 输入$0.15/缓存$0.003/输出$0.60。旧名 deepseek-v4-flash 同价。",

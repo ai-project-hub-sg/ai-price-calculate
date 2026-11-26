@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
 import signal
 import sys
@@ -29,6 +30,7 @@ import threading
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from . import fetcher, nodepool, security, validation
 
@@ -89,25 +91,57 @@ def _write_config(cfg: dict):
             pass
 
 
-def _fx() -> dict:
+def _valid_fx_data(data: object) -> bool:
+    if not isinstance(data, dict):
+        return False
+    rate = data.get("rate")
+    return (
+        isinstance(rate, (int, float))
+        and not isinstance(rate, bool)
+        and math.isfinite(rate)
+        and rate > 0
+    )
+
+
+def _fx(refresh: bool = False) -> dict:
     cache = _read_json(FX_CACHE, None)
-    if cache and time.time() - cache.get("ts", 0) < FX_TTL:
+    if (
+        not refresh
+        and cache
+        and time.time() - cache.get("ts", 0) < FX_TTL
+        and _valid_fx_data(cache.get("data"))
+    ):
         return {**cache["data"], "cached": True}
     # 严格直连（nodepool.fetch_url 显式空 ProxyHandler，不读环境变量代理）
     r = nodepool.fetch_url(FX_URL, None, timeout=10)
     if r["status"] != 200:
         raise RuntimeError(f"汇率源 HTTP {r['status']} {r.get('error','')}")
     payload = json.loads(r["body"])
-    data = {"rate": payload["rates"]["CNY"], "source": FX_URL,
+    rate = payload["rates"]["CNY"]
+    data = {"rate": rate, "source": FX_URL,
             "fetchedAt": payload.get("time_last_update_utc", "")}
+    if not _valid_fx_data(data):
+        raise ValueError("汇率源返回的 CNY 汇率无效")
     os.makedirs(DATA, exist_ok=True)
     with open(FX_CACHE, "w", encoding="utf-8") as f:
         json.dump({"ts": time.time(), "data": data}, f)
     return {**data, "cached": False}
 
 
+def _max_nodes_warning(max_nodes: int) -> str | None:
+    """API 层软提示（CR-005）：>999 不拒绝但明确问用户是否输错——
+    POST 响应 warning 字段与 job 日志各发一份（含 nodes/test 缓存命中
+    路径）。硬上限 9999 已在 _max_nodes 拦截。"""
+    if max_nodes > nodepool.MAX_NODES_WARN:
+        return (f"maxNodes={max_nodes} 超过常用上限 {nodepool.MAX_NODES_WARN}"
+                f"——是否输入出错？（硬上限 {nodepool.MAX_NODES_LIMIT}）")
+    return None
+
+
 def _run_update(job_id: str, providers: list[str] | None, max_nodes: int):
     lines: list[str] = []
+    if warn := _max_nodes_warning(max_nodes):
+        lines.append(warn)
 
     def prog(p: dict):
         with _JOBS_LOCK:
@@ -129,6 +163,8 @@ def _run_nodes_test(job_id: str, force: bool, max_nodes: int):
     """POST /api/nodes/test 后台任务：v2rayN 候选节点连通性探测。
     1h 内测过 → 直接回缓存快照（cached 标记），force=True 强制重跑。"""
     lines: list[str] = []
+    if warn := _max_nodes_warning(max_nodes):
+        lines.append(warn)
     rep, status, err = None, "done", None
     try:
         cached = None if force else nodepool.cache_test_results()
@@ -253,7 +289,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": f"config.json 解析失败: {e}"}, 500)
         elif path == "/api/fx":
             try:
-                self._json(_fx())
+                refresh = parse_qs(urlsplit(self.path).query).get("refresh") == ["1"]
+                self._json(_fx(refresh=refresh))
             except Exception as e:
                 self._json({"error": f"{type(e).__name__}: {e}"}, 502)
         elif path == "/api/nodes":
@@ -309,13 +346,43 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def _max_nodes(self, body: dict) -> int | None:
-        try:
-            value = int(body.get("maxNodes", 25))
-        except (TypeError, ValueError, OverflowError):
-            self._json({"error": "maxNodes 必须是整数"}, 400)
+        """maxNodes = 最多探测节点数，纯上限无魔法值：缺省 999（实际等同
+        全部）；接受正整数与整数值浮点（25.0→25）；0/负数/非整数值/非数字
+        报 400；超过硬上限 9999 报 400（极限大值只可能是输错）。注意是
+        「整数值」而非「允许浮点」——没有 25.1 个节点。"""
+        value = body.get("maxNodes", 999)
+        if value is None:
+            value = 999
+        hint = ("maxNodes 必须是正整数值（≥1，如 25；缺省 999 等同全部节点，"
+                "上限 9999）")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            self._json({"error": f"{hint}；收到 {type(value).__name__} 类型，不是数字"}, 400)
             return None
-        if value < 0:
-            self._json({"error": "maxNodes 不能为负数"}, 400)
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                self._json({"error": f"{hint}；收到非有限数字"}, 400)
+                return None
+            if value == int(value):
+                value = int(value)  # 25.0 → 25：整数值，接受
+            else:
+                self._json({"error": f"{hint}；收到 {value}，节点个数不能是小数"}, 400)
+                return None
+        if value < 1:
+            self._json({"error": f"{hint}；收到 {value}，0 或负数不表示全部——"
+                                 "要测全部请缺省或填大数"}, 400)
+            return None
+        if value > nodepool.MAX_NODES_LIMIT:
+            self._json({"error": f"{hint}；收到 {value}，超过上限 "
+                                 f"{nodepool.MAX_NODES_LIMIT}——是否输入出错？"}, 400)
+            return None
+        return value
+
+    def _providers(self, body: dict) -> list[str] | None:
+        value = body.get("providers")
+        if value is None:
+            return []
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            self._json({"error": "providers 必须是字符串数组"}, 400)
             return None
         return value
 
@@ -360,6 +427,9 @@ class Handler(BaseHTTPRequestHandler):
             max_nodes = self._max_nodes(body)
             if max_nodes is None:
                 return
+            providers = self._providers(body)
+            if providers is None:
+                return
             job_id = uuid.uuid4().hex[:8]
             if not self._start_job(job_id, {
                     "status": "running", "report": None, "log": [],
@@ -368,9 +438,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             threading.Thread(
                 target=_run_update,
-                args=(job_id, body.get("providers"), max_nodes),
+                args=(job_id, providers, max_nodes),
                 daemon=True).start()
-            self._json({"jobId": job_id})
+            resp = {"jobId": job_id}
+            if warn := _max_nodes_warning(max_nodes):
+                resp["warning"] = warn
+            self._json(resp)
         elif path == "/api/nodes/test":
             body = self._body()
             if body is None:
@@ -396,7 +469,10 @@ class Handler(BaseHTTPRequestHandler):
                 target=_run_nodes_test,
                 args=(job_id, bool(body.get("force")), max_nodes),
                 daemon=True).start()
-            self._json({"jobId": job_id})
+            resp = {"jobId": job_id}
+            if warn := _max_nodes_warning(max_nodes):
+                resp["warning"] = warn
+            self._json(resp)
         elif path == "/api/shutdown":
             with self.server.state_lock:
                 with _JOBS_LOCK:

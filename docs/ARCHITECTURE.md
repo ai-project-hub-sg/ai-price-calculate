@@ -270,15 +270,23 @@ Python 版 nodepool 硬编码 Windows v2rayN（读 sqlite 节点库 + 拉起 xra
 | config.json/models.json 损坏时静默返回默认/空（下次 PUT 无声覆盖） | 解析失败 → 500 + 日志 |
 | `./public` 存在则用磁盘否则内嵌（换 cwd 即换 UI 来源） | 默认=embed；磁盘仅 `--public` 显式指定 |
 | `--data ./data` 相对 cwd（换目录启动凭空建新 data/） | 默认=可执行文件同目录 `data/`；flag 可覆盖 |
-| vless/hy2 URI userinfo 百分号编码未解码 | 显式 `QueryUnescape` |
+| vless/hy2 URI userinfo 百分号编码 | `url.Parse` 已解码一次，直接使用 `User.Username()`；禁止再次 `QueryUnescape`（否则合法 `+` 变空格） |
+| 非法 job 参数静默采用默认值/更新全部源 | `providers` 必须是字符串数组；`maxNodes` 必须是正整数值（整数值浮点 `25.0` 接受、`25.1` 拒绝——没有 25.1 个节点），缺省 999 等同全部，硬上限 9999；`999<x≤9999` 接受但响应 `warning` + job 日志提示「是否输入出错」；非法输入 400 且不创建 job，报错说明正确输入 |
 
-### 10.4 models.json 写回策略（Go 特有）
+### 10.4 models.json 写回策略（双端统一 canonical）
 
-Python 靠 dict 原地修改天然保留文件排版；Go `map[string]any` 会丢字段顺序（文件存在 6 种字段序变体）。方案：**raw 保留 + 脏子树 canonical 化**——`Dataset` 为每个 provider/meta 子树保存原始字节；写回时未改动的子树原字节直通（diff 为零），仅被 merge 的 provider 按固定字段序（id,name,currency,source,checkedAt,models…）重排输出。每个 provider 首次被 Go 触碰产生一次纯顺序的机械 diff，之后该子树永久稳定。同时修复数字序列化：`contextWindow` 等大数禁止科学计数法输出（曾出现 `1050000`→`1.05e+06`）。
+**CR-004 起双端统一**：两端写回都按同一 canonical 键序规范重排（`fetcher.canonicalize` 镜像 Go `fieldOrders`，顺序即 models.json `meta.fields` 的自我声明）。此前 Python 保留插入序，而各解析器 tier 键序异质（deepseek `input/cacheRead/output` vs xai `input/output/cacheRead`），固定 canonical 序数学上不可能对齐——只有双端同规范才能逐字节一致。升级后首次写回产生一次性键序重排（纯顺序、内容零变化，`data/models.json` 已在 CR-004 归一化），此后永久稳定。
+
+Go 侧额外做 **raw 保留**：`Dataset` 为每个 provider/meta 子树保存原始字节，未被 merge 的子树原字节直通（diff 为零），仅脏 provider canonical 重排；输入文件 canonical 后，直通字节与 Python 重排结果一致。
+
+**数字写回**：Go `encoding/json` 把所有数字解为 float64 丢失 int/float 区分——任何只看值的格式化数学上不可能同时写对 `64000`（int）与 `2.0`（float）。方案：**类型保留解码**（UseNumber + Python 规则分流：整数词法→int64、小数/指数词法→float64）+ 写回按 CPython repr 规则（integral float 补 `.0`，指数 <-4 或 ≥16 科学计数法两位补零）。守门测试：`merge_expected_file.json` 记录 Python 写回字节，Go 逐字节对拍（语义比较看不出 `64000` vs `64000.0`）。
 
 ### 10.5 与 Python 版的行为差异（有意）
 
-- `PUT /api/config`：两版均校验 JSON 对象与 proxySubscription URL（允许空）；其余 schema 仍由前端 validateConfig 负责，写回原子化。
+- `PUT /api/config`：两版均校验 JSON 对象与 proxySubscription URL（允许空、上限 4096 UTF-8 字节）；其余 schema 仍由前端 validateConfig 负责，写回原子化。
+- `/api/fx`：两端只接受有限正数汇率；`?refresh=1` 绕过缓存，无效缓存与无效上游均不落盘。
+- `/api/nodes/test`、`/api/pricing/update`：严格校验 `maxNodes` 与 `providers`；`maxNodes` 缺省 999（实际等同全部），`0`/负数/非整数值一律 400——**没有魔法值**，「0 = 全部」的历史表述已废除（它曾在 Python 价目路径实际等于「一个都不探」）。CR-005 上限规则：`999<x≤9999` 接受但 `warning` 提示「是否输入出错」（响应字段 + job 日志），`>9999` 400；库层（`fetch.Update`/`fetcher._update`）与 CLI（`fetcher --max-nodes`、`nodepool N`）同规则兜底。
+- Go HTTP 连接超时：ReadHeader 5s、Read 15s、Write 60s、Idle 60s；异步 job 与订阅拉取在独立 goroutine 中执行。
 - `/api/nodes`：节点来源不同（订阅 vs v2rayN），见 10.2。
 - 监听地址：Go `--host` 默认 127.0.0.1 与 Python 一致；nginx 同机反代无需放开。
 - Go 版二进制 ~55MB（内嵌 sing-box，含 uTLS+QUIC tags），CGO_ENABLED=0 静态编译，跨平台 `GOOS=linux go build -tags "with_utls with_quic"` 直接产物。
