@@ -6,12 +6,12 @@
 
 | 字段 | 当前值 |
 |---|---|
-| 当前阶段/状态 | 实现/联调 —— `fix/go-port-review-fixes`（基线 `feat/go-port@83b6c06`）：CR-003 审查修复 + CR-004 补完 + CR-005（maxNodes 上限：>999 提示输错、>9999 拒绝，双端+CLI）。2026-11-26 用户已初评 d0e266f 并要求暂不合并、自审 diff；**未合并、未申请 PR** |
+| 当前阶段/状态 | 实现/联调 —— CR-003/004/005 已 squash 合入 `feat/go-port`（`17d9ce0`，作者 `notebook`）；**待 CI 完成 + 人工核验清单；PR main 需另行授权** |
 | 本阶段允许修改 | 全仓；对已批准行为/数据/API/部署的实质变更先建 `docs/changes/CR-*.md` |
-| 审核产物与版本 | `docs/changes/CR-003` + `docs/changes/CR-004` + `docs/changes/CR-005-maxnodes-upper-limits.md`（均 approved for implementation） |
+| 审核产物与版本 | `docs/changes/CR-003` + `docs/changes/CR-004` + `docs/changes/CR-005`（均 approved for implementation）；squash 提交 `17d9ce0`（2026-11-26 用户授权合并） |
 | 最近明确批准 | 用户于 2026-11-25 逐条确认 CR-004 修复方案 v3（含 maxNodes 999 缺省、双端 canonical 键序、CI 记录规则、作者一致性规则）；合并需二次授权。2026-11-26 用户确认将来 squash 作者 = 分支标准身份（`notebook <ai-project-hub@outlook.com>`），main 合并门未定（先只到 feat/go-port）。早期线框与 CR-002/CR-003 批准继续有效。 |
 | 未决问题/风险 | R1 价目时效（F11 缓解）；Kimi 价目 JS 渲染只能人工核对；R6 角色降级方式待确认；登录后完整 UI、Windows 凭据管理器真实读取、Linux VPS/systemd/nginx 与真实订阅端到端未验证；`origin/fix/go-port-hardening` 远端分支处置待定；本地 `fix/go-port-followups` 为已并入 feat/go-port 的悬旧指针 |
-| 下一阶段及进入条件 | 用户审核后授权 squash 合并 `feat/go-port`（作者身份按 AGENTS.md 一致性规则）；后续 PR `main` 与部署需另行授权 |
+| 下一阶段及进入条件 | `feat/go-port` CI 全绿 + 人工核验清单（登录后 UI 全流程、Windows 凭据管理器、Linux VPS 端到端）完成后，用户授权 PR `main`；部署另行授权 |
 
 不得将文件存在、自评通过或用户沉默当作批准。批准后更新本表；产物实质变更需确认原批准是否适用。
 
